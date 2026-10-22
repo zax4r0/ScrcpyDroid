@@ -12,7 +12,9 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -88,10 +90,12 @@ fun MirrorScreen(
         viewModel.pressBack()
     }
 
-    // Auto-hide controls after 3 seconds
-    LaunchedEffect(uiState.showControls) {
-        if (uiState.showControls) {
-            delay(3000)
+    val menuScrollState = rememberScrollState()
+
+    // Auto-hide controls after 4.5 seconds of inactivity (pause timer while scrolling)
+    LaunchedEffect(uiState.showControls, menuScrollState.isScrollInProgress) {
+        if (uiState.showControls && !menuScrollState.isScrollInProgress) {
+            delay(4500)
             viewModel.setShowControls(false)
         }
     }
@@ -313,10 +317,12 @@ fun MirrorScreen(
                 modifier = Modifier
                     .navigationBarsPadding()
                     .padding(bottom = 24.dp)
+                    .padding(horizontal = 16.dp)
                     .clip(RoundedCornerShape(28.dp))
-                    .background(Color.Black.copy(alpha = 0.75f))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    .horizontalScroll(menuScrollState)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Back
