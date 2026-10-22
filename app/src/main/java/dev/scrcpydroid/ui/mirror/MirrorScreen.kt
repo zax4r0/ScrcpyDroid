@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Tune
@@ -87,19 +88,33 @@ fun MirrorScreen(
         }
     }
 
-    // Hide system bars for immersive mirroring
+    // Hide system bars and enable screen pinning (Lock Task Mode) to block local status bar
     val context = LocalContext.current
     val view = LocalView.current
+    val activity = context as? Activity
+
+    LaunchedEffect(uiState.blockControllerStatusBar) {
+        if (uiState.blockControllerStatusBar) {
+            try {
+                activity?.startLockTask()
+            } catch (e: Exception) {
+                android.util.Log.w("MirrorScreen", "startLockTask not available or disabled", e)
+            }
+        } else {
+            try {
+                activity?.stopLockTask()
+            } catch (e: Exception) {
+                // Ignore if not in lock task
+            }
+        }
+    }
+
     DisposableEffect(view, uiState.blockControllerStatusBar) {
-        val window = (context as? Activity)?.window
+        val window = activity?.window
         if (window != null) {
             val insetsController = WindowCompat.getInsetsController(window, view)
             insetsController.hide(WindowInsetsCompat.Type.systemBars())
-            insetsController.systemBarsBehavior = if (uiState.blockControllerStatusBar) {
-                WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
-            } else {
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            }
+            insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && uiState.blockControllerStatusBar) {
                 view.post {
@@ -109,7 +124,13 @@ fun MirrorScreen(
             }
         }
         onDispose {
-            val window = (context as? Activity)?.window
+            try {
+                activity?.stopLockTask()
+            } catch (e: Exception) {
+                // Ignore
+            }
+
+            val window = activity?.window
             if (window != null) {
                 val insetsController = WindowCompat.getInsetsController(window, view)
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
@@ -149,14 +170,20 @@ fun MirrorScreen(
             val videoWidthDp = with(density) { videoWidthPx.toDp() }
             val videoHeightDp = with(density) { videoHeightPx.toDp() }
 
+            val offsetX = (containerWidthPx - videoWidthPx) / 2f
+            val offsetY = (containerHeightPx - videoHeightPx) / 2f
+
             var dragStartY by remember { mutableStateOf<Float?>(null) }
             var notificationTriggered by remember { mutableStateOf(false) }
 
             TouchInterceptor(
-                modifier = Modifier.size(videoWidthDp, videoHeightDp),
+                modifier = Modifier.fillMaxSize(),
                 onTouchEvent = { action, localX, localY, pressure ->
-                    val scaledX = (localX / videoWidthPx) * remoteWidth
-                    val scaledY = (localY / videoHeightPx) * remoteHeight
+                    // Map container coordinates to video surface coordinates
+                    val clampedX = (localX - offsetX).coerceIn(0f, videoWidthPx)
+                    val clampedY = (localY - offsetY).coerceIn(0f, videoHeightPx)
+                    val scaledX = (clampedX / videoWidthPx) * remoteWidth
+                    val scaledY = (clampedY / videoHeightPx) * remoteHeight
 
                     if (uiState.blockControllerStatusBar) {
                         when (action) {
@@ -166,8 +193,8 @@ fun MirrorScreen(
                             }
                             2 -> { // ACTION_MOVE
                                 val start = dragStartY
-                                if (start != null && start < (containerHeightPx * 0.12f) && !notificationTriggered) {
-                                    if (localY - start > 60f) {
+                                if (start != null && start < (containerHeightPx * 0.15f) && !notificationTriggered) {
+                                    if (localY - start > 50f) {
                                         viewModel.expandNotificationPanel()
                                         notificationTriggered = true
                                     }
@@ -188,15 +215,20 @@ fun MirrorScreen(
                     )
                 }
             ) {
-                VideoSurface(
+                Box(
                     modifier = Modifier.fillMaxSize(),
-                    onSurfaceAvailable = { surface ->
-                        viewModel.startDecoding(surface)
-                    },
-                    onSurfaceDestroyed = {
-                        viewModel.stopDecoding()
-                    }
-                )
+                    contentAlignment = Alignment.Center
+                ) {
+                    VideoSurface(
+                        modifier = Modifier.size(videoWidthDp, videoHeightDp),
+                        onSurfaceAvailable = { surface ->
+                            viewModel.startDecoding(surface)
+                        },
+                        onSurfaceDestroyed = {
+                            viewModel.stopDecoding()
+                        }
+                    )
+                }
             }
         }
 
@@ -330,6 +362,22 @@ fun MirrorScreen(
                     )
                 }
 
+                // Notifications
+                FilledIconButton(
+                    onClick = { viewModel.expandNotificationPanel() },
+                    modifier = Modifier.size(42.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = "Notifications",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
                 // Rotate
                 FilledIconButton(
                     onClick = { viewModel.rotateDevice() },
@@ -381,6 +429,11 @@ fun MirrorScreen(
                 TextButton(
                     onClick = {
                         showDisconnectDialog = false
+                        try {
+                            activity?.stopLockTask()
+                        } catch (e: Exception) {
+                            // Ignore
+                        }
                         viewModel.disconnect()
                         onNavigateBack()
                     }
