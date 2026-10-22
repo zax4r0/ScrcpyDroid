@@ -115,6 +115,7 @@ fun MirrorScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 isPinned = activityManager?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+                viewModel.onAppResumed()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

@@ -6,6 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.scrcpydroid.core.clipboard.ClipboardSyncManager
 import dev.scrcpydroid.core.decoder.VideoDecoder
 import dev.scrcpydroid.core.scrcpy.ControlMessageWriter
 import dev.scrcpydroid.core.scrcpy.DeviceInfo
@@ -35,6 +36,7 @@ class MirrorViewModel @Inject constructor(
     private val scrcpyClient: ScrcpyClient,
     private val videoDecoder: VideoDecoder,
     private val settingsRepository: SettingsRepository,
+    private val clipboardSyncManager: ClipboardSyncManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -48,6 +50,9 @@ class MirrorViewModel @Inject constructor(
     init {
         val host: String? = savedStateHandle["host"]
         val port: Int = savedStateHandle["port"] ?: 5555
+
+        // Start clipboard synchronization with remote device
+        clipboardSyncManager.start(viewModelScope)
 
         // Collect ScrcpyClient state
         viewModelScope.launch {
@@ -272,8 +277,13 @@ class MirrorViewModel @Inject constructor(
         _uiState.update { it.copy(showControls = show) }
     }
 
+    fun onAppResumed() {
+        clipboardSyncManager.onResumeOrFocus()
+    }
+
     fun disconnect() {
         viewModelScope.launch {
+            clipboardSyncManager.stop()
             videoDecoder.stop()
             videoDecoder.clearConfig()
             scrcpyClient.disconnect()
@@ -283,6 +293,7 @@ class MirrorViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        clipboardSyncManager.stop()
         videoDecoder.stop()
     }
 }

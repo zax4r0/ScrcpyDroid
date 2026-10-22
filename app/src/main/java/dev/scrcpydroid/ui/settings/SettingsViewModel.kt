@@ -27,6 +27,7 @@ data class SettingsUiState(
     val lockOnDisconnect: Boolean = true,
     val turnScreenOffOnConnect: Boolean = false,
     val autoWakeOnConnect: Boolean = true,
+    val clipboardSync: Boolean = true,
     val otaRepo: String = "zax4r0/ScrcpyDroid",
     val updateResult: UpdateCheckResult = UpdateCheckResult.Idle,
     val downloadProgress: DownloadProgress? = null
@@ -57,7 +58,8 @@ class SettingsViewModel @Inject constructor(
                         dndOnDisconnect = options.dndOnDisconnect,
                         lockOnDisconnect = options.lockOnDisconnect,
                         turnScreenOffOnConnect = options.turnScreenOffOnConnect,
-                        autoWakeOnConnect = options.autoWakeOnConnect
+                        autoWakeOnConnect = options.autoWakeOnConnect,
+                        clipboardSync = options.clipboardSync
                     )
                 }
             }
@@ -139,6 +141,12 @@ class SettingsViewModel @Inject constructor(
     fun setAutoWakeOnConnect(wake: Boolean) {
         viewModelScope.launch {
             settingsRepository.updateAutoWakeOnConnect(wake)
+        }
+    }
+
+    fun setClipboardSync(sync: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateClipboardSync(sync)
         }
     }
 

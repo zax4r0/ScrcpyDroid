@@ -8,6 +8,10 @@ class ControlMessageWriter(
     companion object {
         const val TYPE_INJECT_KEYCODE = 0x00
         const val TYPE_INJECT_TOUCH_EVENT = 0x02
+        const val TYPE_EXPAND_NOTIFICATION_PANEL = 0x05
+        const val TYPE_COLLAPSE_PANELS = 0x07
+        const val TYPE_GET_CLIPBOARD = 0x08
+        const val TYPE_SET_CLIPBOARD = 0x09
         const val TYPE_SET_DISPLAY_POWER = 0x0A
         const val TYPE_ROTATE_DEVICE = 0x0B
         const val TYPE_RESET_VIDEO = 0x11
@@ -98,6 +102,22 @@ class ControlMessageWriter(
 
     fun resetVideo() = synchronized(sink) {
         sink.writeByte(TYPE_RESET_VIDEO)
+        sink.flush()
+    }
+
+    fun setClipboard(text: String, paste: Boolean = false, sequence: Long = 0L) = synchronized(sink) {
+        sink.writeByte(TYPE_SET_CLIPBOARD)
+        sink.writeLong(sequence)
+        sink.writeByte(if (paste) 1 else 0)
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        sink.writeInt(bytes.size)
+        sink.write(bytes)
+        sink.flush()
+    }
+
+    fun getClipboard(copyKey: Int = 0) = synchronized(sink) {
+        sink.writeByte(TYPE_GET_CLIPBOARD)
+        sink.writeByte(copyKey)
         sink.flush()
     }
 }

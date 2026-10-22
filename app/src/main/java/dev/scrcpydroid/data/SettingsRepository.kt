@@ -38,6 +38,7 @@ class SettingsRepository @Inject constructor(
         val LOCK_ON_DISCONNECT = booleanPreferencesKey("lock_on_disconnect")
         val TURN_SCREEN_OFF_ON_CONNECT = booleanPreferencesKey("turn_screen_off_on_connect")
         val AUTO_WAKE_ON_CONNECT = booleanPreferencesKey("auto_wake_on_connect")
+        val CLIPBOARD_SYNC = booleanPreferencesKey("clipboard_sync")
         val OTA_REPO = stringPreferencesKey("ota_repo")
     }
 
@@ -62,6 +63,7 @@ class SettingsRepository @Inject constructor(
             val lockOnDisconnect = preferences[Keys.LOCK_ON_DISCONNECT] ?: true
             val turnScreenOffOnConnect = preferences[Keys.TURN_SCREEN_OFF_ON_CONNECT] ?: false
             val autoWakeOnConnect = preferences[Keys.AUTO_WAKE_ON_CONNECT] ?: true
+            val clipboardSync = preferences[Keys.CLIPBOARD_SYNC] ?: true
 
             val videoCodec = if (codecStr.equals("h265", ignoreCase = true)) {
                 VideoCodec.H265
@@ -84,7 +86,8 @@ class SettingsRepository @Inject constructor(
                 dndOnDisconnect = dndOnDisconnect,
                 lockOnDisconnect = lockOnDisconnect,
                 turnScreenOffOnConnect = turnScreenOffOnConnect,
-                autoWakeOnConnect = autoWakeOnConnect
+                autoWakeOnConnect = autoWakeOnConnect,
+                clipboardSync = clipboardSync
             )
         }
 
@@ -108,6 +111,7 @@ class SettingsRepository @Inject constructor(
     suspend fun updateLockOnDisconnect(lock: Boolean) = updateOption(Keys.LOCK_ON_DISCONNECT, lock)
     suspend fun updateTurnScreenOffOnConnect(turnOff: Boolean) = updateOption(Keys.TURN_SCREEN_OFF_ON_CONNECT, turnOff)
     suspend fun updateAutoWakeOnConnect(wake: Boolean) = updateOption(Keys.AUTO_WAKE_ON_CONNECT, wake)
+    suspend fun updateClipboardSync(sync: Boolean) = updateOption(Keys.CLIPBOARD_SYNC, sync)
 
     fun getOtaRepo(): Flow<String> = context.settingsDataStore.data.map { preferences ->
         preferences[Keys.OTA_REPO] ?: "zax4r0/ScrcpyDroid"

@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okio.BufferedSource
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -66,6 +67,14 @@ class ScrcpyClient @Inject constructor(
     )
     @Volatile
     private var lastConfigPacket: VideoPacket? = null
+
+    private var controlReaderJob: Job? = null
+    private val _remoteClipboardFlow = MutableSharedFlow<String>(
+        replay = 1,
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val remoteClipboardFlow: Flow<String> = _remoteClipboardFlow.asSharedFlow()
 
     private var videoParser: VideoPacketParser? = null
     private var controlWriter: ControlMessageWriter? = null
@@ -162,7 +171,8 @@ class ScrcpyClient @Inject constructor(
                 val cStream = adbConnectionManager.openStream("localabstract:scrcpy")
                 controlStream = cStream
                 controlWriter = ControlMessageWriter(cStream.sink)
-                android.util.Log.d(TAG, "Control stream opened successfully")
+                startControlReader(cStream.source)
+                android.util.Log.d(TAG, "Control stream opened and control reader started")
 
                 if (options.turnScreenOffOnConnect) {
                     clientScope.launch {
@@ -223,6 +233,45 @@ class ScrcpyClient @Inject constructor(
         }
     }
 
+    private fun startControlReader(source: BufferedSource) {
+        controlReaderJob?.cancel()
+        controlReaderJob = clientScope.launch(Dispatchers.IO) {
+            try {
+                while (isActive) {
+                    val type = source.readByte().toInt() and 0xFF
+                    when (type) {
+                        0 -> { // TYPE_CLIPBOARD from remote device
+                            val length = source.readInt()
+                            if (length in 1..262144) {
+                                val textBytes = source.readByteArray(length.toLong())
+                                val text = String(textBytes, Charsets.UTF_8)
+                                android.util.Log.d(TAG, "Received remote clipboard (${text.length} chars)")
+                                _remoteClipboardFlow.emit(text)
+                            } else if (length > 262144) {
+                                source.skip(length.toLong())
+                            }
+                        }
+                        1 -> { // TYPE_ACK_CLIPBOARD
+                            val sequence = source.readLong()
+                        }
+                        2 -> { // TYPE_UHID_OUTPUT
+                            val id = source.readShort()
+                            val length = source.readShort().toInt() and 0xFFFF
+                            source.skip(length.toLong())
+                        }
+                        else -> {
+                            android.util.Log.w(TAG, "Unknown control message type received: $type")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                if (e !is CancellationException) {
+                    android.util.Log.d(TAG, "Control reader loop ended: ${e.message}")
+                }
+            }
+        }
+    }
+
     fun getVideoPacketFlow(): Flow<VideoPacket> = _videoPacketFlow.asSharedFlow()
 
     fun getLastConfigPacket(): VideoPacket? = lastConfigPacket
@@ -267,6 +316,12 @@ class ScrcpyClient @Inject constructor(
         videoJob = null
         lastConfigPacket = null
         _videoPacketFlow.resetReplayCache()
+
+        try {
+            controlReaderJob?.cancel()
+        } catch (_: Exception) {}
+        controlReaderJob = null
+        _remoteClipboardFlow.resetReplayCache()
 
         try {
             audioStream?.close()

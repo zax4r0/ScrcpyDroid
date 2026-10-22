@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BrightnessHigh
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.HighQuality
@@ -486,6 +487,29 @@ fun SettingsScreen(
                             )
                         },
                         modifier = Modifier.clickable { viewModel.setAutoWakeOnConnect(!uiState.autoWakeOnConnect) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    // Bidirectional Clipboard Sync
+                    ListItem(
+                        headlineContent = { Text("Clipboard Sync (Bidirectional)") },
+                        supportingContent = { Text("Automatically sync copied text between both phones in real time") },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Default.ContentPaste,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = uiState.clipboardSync,
+                                onCheckedChange = { viewModel.setClipboardSync(it) }
+                            )
+                        },
+                        modifier = Modifier.clickable { viewModel.setClipboardSync(!uiState.clipboardSync) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                     )
                 }

@@ -15,7 +15,8 @@ data class ScrcpyOptions(
     val dndOnDisconnect: Boolean = true,
     val lockOnDisconnect: Boolean = true,
     val turnScreenOffOnConnect: Boolean = false,
-    val autoWakeOnConnect: Boolean = true
+    val autoWakeOnConnect: Boolean = true,
+    val clipboardSync: Boolean = true
 ) {
     companion object {
         const val SCRCPY_VERSION = "3.1"
@@ -44,6 +45,7 @@ data class ScrcpyOptions(
         append(" stay_awake=$stayAwake")
         append(" show_touches=$showTouches")
         append(" power_off_on_close=$powerOffOnClose")
+        append(" clipboard_autosync=$clipboardSync")
         append(" scid=-1")
     }
 }
