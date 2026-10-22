@@ -14,6 +14,7 @@ import dev.scrcpydroid.core.scrcpy.ScrcpyClient
 import dev.scrcpydroid.core.scrcpy.ScrcpyState
 import dev.scrcpydroid.data.SettingsRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +22,16 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+private data class TouchEventData(
+    val action: Int,
+    val pointerId: Long,
+    val x: Int,
+    val y: Int,
+    val screenWidth: Int,
+    val screenHeight: Int,
+    val pressure: Float
+)
 
 data class MirrorUiState(
     val deviceInfo: DeviceInfo? = null,
@@ -47,9 +58,31 @@ class MirrorViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(MirrorUiState())
     val uiState: StateFlow<MirrorUiState> = _uiState.asStateFlow()
 
+    private val touchChannel = Channel<TouchEventData>(capacity = 128)
+
     init {
         val host: String? = savedStateHandle["host"]
         val port: Int = savedStateHandle["port"] ?: 5555
+
+        // Dedicated low-latency touch worker loop (zero coroutine allocations per touch event)
+        viewModelScope.launch(Dispatchers.IO) {
+            for (touch in touchChannel) {
+                val writer = scrcpyClient.getControlWriter() ?: continue
+                try {
+                    writer.injectTouchEvent(
+                        action = touch.action,
+                        pointerId = touch.pointerId,
+                        x = touch.x,
+                        y = touch.y,
+                        screenWidth = touch.screenWidth,
+                        screenHeight = touch.screenHeight,
+                        pressure = touch.pressure
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to inject touch event", e)
+                }
+            }
+        }
 
         // Start clipboard synchronization with remote device
         clipboardSyncManager.start(viewModelScope)
@@ -163,34 +196,29 @@ class MirrorViewModel @Inject constructor(
     }
 
     fun onTouchEvent(action: Int, x: Float, y: Float, pressure: Float = 1.0f) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val writer = scrcpyClient.getControlWriter() ?: return@launch
-            val info = _uiState.value.deviceInfo ?: scrcpyClient.getDeviceInfo()
-            val width = info?.width ?: 1080
-            val height = info?.height ?: 1920
+        val info = _uiState.value.deviceInfo ?: scrcpyClient.getDeviceInfo()
+        val width = info?.width ?: 1080
+        val height = info?.height ?: 1920
 
-            val scrcpyAction = when (action) {
-                0 -> ControlMessageWriter.ACTION_DOWN
-                1 -> ControlMessageWriter.ACTION_UP
-                2 -> ControlMessageWriter.ACTION_MOVE
-                3 -> ControlMessageWriter.ACTION_UP
-                else -> action
-            }
-
-            try {
-                writer.injectTouchEvent(
-                    action = scrcpyAction,
-                    pointerId = 0L,
-                    x = x.toInt().coerceIn(0, width),
-                    y = y.toInt().coerceIn(0, height),
-                    screenWidth = width,
-                    screenHeight = height,
-                    pressure = pressure
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to inject touch event", e)
-            }
+        val scrcpyAction = when (action) {
+            0 -> ControlMessageWriter.ACTION_DOWN
+            1 -> ControlMessageWriter.ACTION_UP
+            2 -> ControlMessageWriter.ACTION_MOVE
+            3 -> ControlMessageWriter.ACTION_UP
+            else -> action
         }
+
+        touchChannel.trySend(
+            TouchEventData(
+                action = scrcpyAction,
+                pointerId = 0L,
+                x = x.toInt().coerceIn(0, width),
+                y = y.toInt().coerceIn(0, height),
+                screenWidth = width,
+                screenHeight = height,
+                pressure = pressure
+            )
+        )
     }
 
     fun pressBack() {

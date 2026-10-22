@@ -24,7 +24,7 @@ class VideoDecoder @Inject constructor() {
 
     companion object {
         private const val TAG = "VideoDecoder"
-        private const val DEQUEUE_TIMEOUT_US = 10_000L
+        private const val DEQUEUE_TIMEOUT_US = 1000L // 1ms for minimum latency
     }
 
     private var codec: MediaCodec? = null
@@ -50,7 +50,9 @@ class VideoDecoder @Inject constructor() {
     }
 
     fun onSurfaceDestroyed() {
-        stop()
+        synchronized(this) {
+            currentSurface = null
+        }
     }
 
     fun clearConfig() {
@@ -115,6 +117,8 @@ class VideoDecoder @Inject constructor() {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
                     }
+                    format.setInteger(MediaFormat.KEY_PRIORITY, 0)
+                    format.setInteger(MediaFormat.KEY_OPERATING_RATE, Short.MAX_VALUE.toInt())
                     setupCodecSpecificData(format, codecMime, cachedConfig)
                     val activeSurface = synchronized(this@VideoDecoder) { currentSurface } ?: surface
                     val newCodec = MediaCodec.createDecoderByType(codecMime)
@@ -151,6 +155,8 @@ class VideoDecoder @Inject constructor() {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
                     }
+                    format.setInteger(MediaFormat.KEY_PRIORITY, 0)
+                    format.setInteger(MediaFormat.KEY_OPERATING_RATE, Short.MAX_VALUE.toInt())
 
                     val configData = if (packet.isConfig) packet.data else (synchronized(this@VideoDecoder) { lastConfigData } ?: initialConfig)
                     if (configData != null) {
@@ -188,7 +194,7 @@ class VideoDecoder @Inject constructor() {
     private suspend fun feedInput(mediaCodec: MediaCodec, packet: VideoPacket) {
         var queued = false
         var attempts = 0
-        while (!queued && isRunning.get() && attempts < 10) {
+        while (!queued && isRunning.get() && attempts < 5) {
             try {
                 val inputIndex = mediaCodec.dequeueInputBuffer(DEQUEUE_TIMEOUT_US)
                 if (inputIndex >= 0) {
@@ -206,7 +212,7 @@ class VideoDecoder @Inject constructor() {
                     }
                 } else {
                     attempts++
-                    delay(2)
+                    kotlinx.coroutines.yield()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error queuing input buffer", e)
@@ -218,26 +224,22 @@ class VideoDecoder @Inject constructor() {
     private fun drainOutput(mediaCodec: MediaCodec, bufferInfo: MediaCodec.BufferInfo) {
         while (isRunning.get()) {
             try {
-                val outputIndex = mediaCodec.dequeueOutputBuffer(bufferInfo, DEQUEUE_TIMEOUT_US)
-                when {
-                    outputIndex >= 0 -> {
-                        val surface = synchronized(this) { currentSurface }
-                        if (surface != null && surface.isValid) {
-                            try {
-                                mediaCodec.releaseOutputBuffer(outputIndex, true)
-                            } catch (e: Exception) {
-                                mediaCodec.releaseOutputBuffer(outputIndex, false)
-                            }
-                        } else {
+                var outputIndex = mediaCodec.dequeueOutputBuffer(bufferInfo, DEQUEUE_TIMEOUT_US)
+                while (outputIndex >= 0 && isRunning.get()) {
+                    val surface = synchronized(this) { currentSurface }
+                    if (surface != null && surface.isValid) {
+                        try {
+                            mediaCodec.releaseOutputBuffer(outputIndex, true)
+                        } catch (e: Exception) {
                             mediaCodec.releaseOutputBuffer(outputIndex, false)
                         }
+                    } else {
+                        mediaCodec.releaseOutputBuffer(outputIndex, false)
                     }
-                    outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                        Log.d(TAG, "Decoder output format changed: ${mediaCodec.outputFormat}")
-                    }
-                    outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
-                        // Timeout, keep draining
-                    }
+                    outputIndex = mediaCodec.dequeueOutputBuffer(bufferInfo, 0L)
+                }
+                if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    Log.d(TAG, "Decoder output format changed: ${mediaCodec.outputFormat}")
                 }
             } catch (e: Exception) {
                 if (isRunning.get()) {

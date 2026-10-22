@@ -41,8 +41,10 @@ class AdbConnectionManager @Inject constructor(
 
             val deviceName = try {
                 val shellResponse = dadbInstance.shell("getprop ro.product.model")
+                optimizeAdbSocket(dadbInstance)
                 shellResponse.output.trim().ifEmpty { "$host:$port" }
             } catch (_: Exception) {
+                optimizeAdbSocket(dadbInstance)
                 "$host:$port"
             }
 
@@ -84,11 +86,31 @@ class AdbConnectionManager @Inject constructor(
 
     suspend fun executeShell(command: String): AdbStream = withContext(Dispatchers.IO) {
         val current = dadb ?: throw IllegalStateException("ADB connection not established")
+        optimizeAdbSocket(current)
         current.open("shell:$command")
     }
 
     suspend fun openStream(destination: String): AdbStream = withContext(Dispatchers.IO) {
         val current = dadb ?: throw IllegalStateException("ADB connection not established")
+        optimizeAdbSocket(current)
         current.open(destination)
+    }
+
+    private fun optimizeAdbSocket(dadbInstance: Dadb) {
+        try {
+            val field = dadbInstance.javaClass.getDeclaredField("connection")
+            field.isAccessible = true
+            val pair = field.get(dadbInstance) as? Pair<*, *>
+            val socket = pair?.second as? java.net.Socket
+            socket?.let { s ->
+                if (!s.tcpNoDelay) s.tcpNoDelay = true
+                s.trafficClass = 0x10 // IPTOS_LOWDELAY
+                s.setPerformancePreferences(0, 2, 1) // Prioritize low latency
+                s.sendBufferSize = 256 * 1024
+                s.receiveBufferSize = 2 * 1024 * 1024
+            }
+        } catch (_: Exception) {
+            // Ignored if reflection is not available
+        }
     }
 }
