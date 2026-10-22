@@ -26,7 +26,8 @@ data class MirrorUiState(
     val isConnected: Boolean = false,
     val showControls: Boolean = true,
     val errorMessage: String? = null,
-    val fps: Int = 60
+    val fps: Int = 60,
+    val isDisplayPowerOn: Boolean = true
 )
 
 @HiltViewModel
@@ -244,6 +245,22 @@ class MirrorViewModel @Inject constructor(
                 Log.e(TAG, "Failed collapsePanels", e)
             }
         }
+    }
+
+    fun setDisplayPower(on: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                scrcpyClient.getControlWriter()?.setDisplayPower(on)
+                _uiState.update { it.copy(isDisplayPowerOn = on) }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed setDisplayPower", e)
+            }
+        }
+    }
+
+    fun toggleDisplayPower() {
+        val next = !_uiState.value.isDisplayPowerOn
+        setDisplayPower(next)
     }
 
     fun toggleControls() {

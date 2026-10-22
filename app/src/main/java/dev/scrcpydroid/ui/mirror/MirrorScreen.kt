@@ -38,6 +38,8 @@ import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -409,6 +411,22 @@ fun MirrorScreen(
                     Icon(
                         imageVector = Icons.Default.PushPin,
                         contentDescription = if (isPinned) "Unpin App" else "Pin App",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Remote Screen On/Off (Display Power)
+                FilledIconButton(
+                    onClick = { viewModel.toggleDisplayPower() },
+                    modifier = Modifier.size(42.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = if (!uiState.isDisplayPowerOn) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (!uiState.isDisplayPowerOn) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    Icon(
+                        imageVector = if (uiState.isDisplayPowerOn) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                        contentDescription = if (uiState.isDisplayPowerOn) "Turn Remote Screen Off" else "Turn Remote Screen On",
                         modifier = Modifier.size(20.dp)
                     )
                 }

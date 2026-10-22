@@ -23,6 +23,10 @@ data class SettingsUiState(
     val showTouches: Boolean = false,
     val audioEnabled: Boolean = true,
     val audioDup: Boolean = false,
+    val dndOnDisconnect: Boolean = true,
+    val lockOnDisconnect: Boolean = true,
+    val turnScreenOffOnConnect: Boolean = false,
+    val autoWakeOnConnect: Boolean = true,
     val otaRepo: String = "zax4r0/ScrcpyDroid",
     val updateResult: UpdateCheckResult = UpdateCheckResult.Idle,
     val downloadProgress: DownloadProgress? = null
@@ -49,7 +53,11 @@ class SettingsViewModel @Inject constructor(
                         stayAwake = options.stayAwake,
                         showTouches = options.showTouches,
                         audioEnabled = options.audioEnabled,
-                        audioDup = options.audioDup
+                        audioDup = options.audioDup,
+                        dndOnDisconnect = options.dndOnDisconnect,
+                        lockOnDisconnect = options.lockOnDisconnect,
+                        turnScreenOffOnConnect = options.turnScreenOffOnConnect,
+                        autoWakeOnConnect = options.autoWakeOnConnect
                     )
                 }
             }
@@ -107,6 +115,30 @@ class SettingsViewModel @Inject constructor(
     fun setAudioDup(dup: Boolean) {
         viewModelScope.launch {
             settingsRepository.updateAudioDup(dup)
+        }
+    }
+
+    fun setDndOnDisconnect(dnd: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateDndOnDisconnect(dnd)
+        }
+    }
+
+    fun setLockOnDisconnect(lock: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateLockOnDisconnect(lock)
+        }
+    }
+
+    fun setTurnScreenOffOnConnect(turnOff: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateTurnScreenOffOnConnect(turnOff)
+        }
+    }
+
+    fun setAutoWakeOnConnect(wake: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateAutoWakeOnConnect(wake)
         }
     }
 

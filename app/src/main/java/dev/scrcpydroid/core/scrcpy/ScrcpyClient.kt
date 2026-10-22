@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import javax.inject.Inject
@@ -58,6 +59,7 @@ class ScrcpyClient @Inject constructor(
     private var videoParser: VideoPacketParser? = null
     private var controlWriter: ControlMessageWriter? = null
     private var deviceInfo: DeviceInfo? = null
+    private var lastOptions: ScrcpyOptions? = null
 
     suspend fun connect(
         host: String,
@@ -65,13 +67,21 @@ class ScrcpyClient @Inject constructor(
         options: ScrcpyOptions = ScrcpyOptions()
     ) = withContext(Dispatchers.IO) {
         try {
+            lastOptions = options
             disconnectInternal()
             _state.value = ScrcpyState.Connecting
 
             // 2. Connect ADB
             val adbResult = adbConnectionManager.connect(host, port)
-            if (adbResult.isFailure) {
-                throw adbResult.exceptionOrNull() ?: IOException("Failed to connect ADB to $host:$port")
+            val dadb = adbResult.getOrThrow()
+
+            // Auto-wake target device if enabled
+            if (options.autoWakeOnConnect) {
+                try {
+                    dadb.shell("input keyevent 224 ; wm dismiss-keyguard")
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "Failed autoWakeOnConnect: ${e.message}")
+                }
             }
 
             // 3. Push scrcpy-server.jar from assets
@@ -82,8 +92,21 @@ class ScrcpyClient @Inject constructor(
             // 4. Update state to ServerStarting
             _state.value = ScrcpyState.ServerStarting
 
-            // 5. Launch server via shell
-            val serverCmd = "CLASSPATH=${ScrcpyOptions.SERVER_PATH} app_process / com.genymobile.scrcpy.Server ${options.toServerArgs()}"
+            // 5. Build post-exit cleanup chain for server termination (even if disconnect is accidental or network loss)
+            val cleanupList = mutableListOf<String>()
+            if (options.dndOnDisconnect) {
+                cleanupList.add("cmd notification set_dnd none")
+                cleanupList.add("for s in 0 1 2 3 4 5; do cmd media_session volume --stream \$s --set 0; done")
+            }
+            if (options.lockOnDisconnect) {
+                cleanupList.add("input keyevent 223")
+            }
+            val cleanupChain = if (cleanupList.isNotEmpty()) {
+                " ; ( " + cleanupList.joinToString(" ; ") + " )"
+            } else ""
+
+            // Launch server via shell
+            val serverCmd = "CLASSPATH=${ScrcpyOptions.SERVER_PATH} app_process / com.genymobile.scrcpy.Server ${options.toServerArgs()}$cleanupChain"
             android.util.Log.d(TAG, "Launching scrcpy-server: $serverCmd")
             serverStream = adbConnectionManager.executeShell(serverCmd)
 
@@ -129,6 +152,18 @@ class ScrcpyClient @Inject constructor(
                 controlStream = cStream
                 controlWriter = ControlMessageWriter(cStream.sink)
                 android.util.Log.d(TAG, "Control stream opened successfully")
+
+                if (options.turnScreenOffOnConnect) {
+                    clientScope.launch {
+                        delay(400)
+                        try {
+                            controlWriter?.setDisplayPower(false)
+                            android.util.Log.d(TAG, "turnScreenOffOnConnect: turned display power off")
+                        } catch (e: Exception) {
+                            android.util.Log.w(TAG, "turnScreenOffOnConnect failed: ${e.message}")
+                        }
+                    }
+                }
             } else {
                 controlStream = null
                 controlWriter = null
@@ -179,6 +214,25 @@ class ScrcpyClient @Inject constructor(
     }
 
     private suspend fun disconnectInternal() {
+        try {
+            val opts = lastOptions
+            if (opts != null && (opts.dndOnDisconnect || opts.lockOnDisconnect)) {
+                val cmds = mutableListOf<String>()
+                if (opts.dndOnDisconnect) {
+                    cmds.add("cmd notification set_dnd none")
+                    cmds.add("for s in 0 1 2 3 4 5; do cmd media_session volume --stream \$s --set 0; done")
+                }
+                if (opts.lockOnDisconnect) {
+                    cmds.add("input keyevent 223")
+                }
+                if (cmds.isNotEmpty()) {
+                    adbConnectionManager.currentDadb?.shell(cmds.joinToString(" ; "))
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "Failed running disconnect shell cleanup: ${e.message}")
+        }
+
         try {
             audioPlayer.stop()
         } catch (_: Exception) {}

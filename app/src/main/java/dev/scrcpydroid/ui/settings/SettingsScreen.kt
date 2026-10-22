@@ -20,14 +20,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BrightnessHigh
+import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MovieFilter
 import androidx.compose.material.icons.filled.SlowMotionVideo
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -380,6 +384,108 @@ fun SettingsScreen(
                             )
                         },
                         modifier = Modifier.clickable { viewModel.setAudioEnabled(!uiState.audioEnabled) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+                }
+            }
+
+            // Automation & Privacy Section
+            SectionHeader(title = "AUTOMATION & PRIVACY")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // DND on Disconnect
+                    ListItem(
+                        headlineContent = { Text("Total Silence (DND) on Disconnect") },
+                        supportingContent = { Text("Silence all sounds, media, alarms, rings, and notifications on target device upon disconnect") },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Default.DoNotDisturbOn,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = uiState.dndOnDisconnect,
+                                onCheckedChange = { viewModel.setDndOnDisconnect(it) }
+                            )
+                        },
+                        modifier = Modifier.clickable { viewModel.setDndOnDisconnect(!uiState.dndOnDisconnect) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    // Lock Screen on Disconnect
+                    ListItem(
+                        headlineContent = { Text("Lock Screen on Disconnect") },
+                        supportingContent = { Text("Put remote device to sleep and lock display when session ends") },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = uiState.lockOnDisconnect,
+                                onCheckedChange = { viewModel.setLockOnDisconnect(it) }
+                            )
+                        },
+                        modifier = Modifier.clickable { viewModel.setLockOnDisconnect(!uiState.lockOnDisconnect) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    // Screen Off on Connect
+                    ListItem(
+                        headlineContent = { Text("Screen Off on Connect") },
+                        supportingContent = { Text("Keep physical screen dark while mirroring to save battery and avoid accidental touches") },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Default.VisibilityOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = uiState.turnScreenOffOnConnect,
+                                onCheckedChange = { viewModel.setTurnScreenOffOnConnect(it) }
+                            )
+                        },
+                        modifier = Modifier.clickable { viewModel.setTurnScreenOffOnConnect(!uiState.turnScreenOffOnConnect) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    // Wake Screen on Connect
+                    ListItem(
+                        headlineContent = { Text("Wake Screen on Connect") },
+                        supportingContent = { Text("Automatically wake up remote display when starting connection") },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Default.WbSunny,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = uiState.autoWakeOnConnect,
+                                onCheckedChange = { viewModel.setAutoWakeOnConnect(it) }
+                            )
+                        },
+                        modifier = Modifier.clickable { viewModel.setAutoWakeOnConnect(!uiState.autoWakeOnConnect) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                     )
                 }

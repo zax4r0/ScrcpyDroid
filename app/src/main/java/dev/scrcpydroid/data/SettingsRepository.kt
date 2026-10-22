@@ -34,6 +34,10 @@ class SettingsRepository @Inject constructor(
         val SHOW_TOUCHES = booleanPreferencesKey("show_touches")
         val AUDIO_ENABLED = booleanPreferencesKey("audio_enabled")
         val AUDIO_DUP = booleanPreferencesKey("audio_dup")
+        val DND_ON_DISCONNECT = booleanPreferencesKey("dnd_on_disconnect")
+        val LOCK_ON_DISCONNECT = booleanPreferencesKey("lock_on_disconnect")
+        val TURN_SCREEN_OFF_ON_CONNECT = booleanPreferencesKey("turn_screen_off_on_connect")
+        val AUTO_WAKE_ON_CONNECT = booleanPreferencesKey("auto_wake_on_connect")
         val OTA_REPO = stringPreferencesKey("ota_repo")
     }
 
@@ -54,6 +58,10 @@ class SettingsRepository @Inject constructor(
             val showTouches = preferences[Keys.SHOW_TOUCHES] ?: false
             val audioEnabled = preferences[Keys.AUDIO_ENABLED] ?: true
             val audioDup = preferences[Keys.AUDIO_DUP] ?: false
+            val dndOnDisconnect = preferences[Keys.DND_ON_DISCONNECT] ?: true
+            val lockOnDisconnect = preferences[Keys.LOCK_ON_DISCONNECT] ?: true
+            val turnScreenOffOnConnect = preferences[Keys.TURN_SCREEN_OFF_ON_CONNECT] ?: false
+            val autoWakeOnConnect = preferences[Keys.AUTO_WAKE_ON_CONNECT] ?: true
 
             val videoCodec = if (codecStr.equals("h265", ignoreCase = true)) {
                 VideoCodec.H265
@@ -72,7 +80,11 @@ class SettingsRepository @Inject constructor(
                 controlEnabled = true,
                 stayAwake = stayAwake,
                 showTouches = showTouches,
-                powerOffOnClose = false
+                powerOffOnClose = false,
+                dndOnDisconnect = dndOnDisconnect,
+                lockOnDisconnect = lockOnDisconnect,
+                turnScreenOffOnConnect = turnScreenOffOnConnect,
+                autoWakeOnConnect = autoWakeOnConnect
             )
         }
 
@@ -92,6 +104,10 @@ class SettingsRepository @Inject constructor(
     suspend fun updateShowTouches(showTouches: Boolean) = updateOption(Keys.SHOW_TOUCHES, showTouches)
     suspend fun updateAudioEnabled(enabled: Boolean) = updateOption(Keys.AUDIO_ENABLED, enabled)
     suspend fun updateAudioDup(dup: Boolean) = updateOption(Keys.AUDIO_DUP, dup)
+    suspend fun updateDndOnDisconnect(dnd: Boolean) = updateOption(Keys.DND_ON_DISCONNECT, dnd)
+    suspend fun updateLockOnDisconnect(lock: Boolean) = updateOption(Keys.LOCK_ON_DISCONNECT, lock)
+    suspend fun updateTurnScreenOffOnConnect(turnOff: Boolean) = updateOption(Keys.TURN_SCREEN_OFF_ON_CONNECT, turnOff)
+    suspend fun updateAutoWakeOnConnect(wake: Boolean) = updateOption(Keys.AUTO_WAKE_ON_CONNECT, wake)
 
     fun getOtaRepo(): Flow<String> = context.settingsDataStore.data.map { preferences ->
         preferences[Keys.OTA_REPO] ?: "zax4r0/ScrcpyDroid"
