@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Phone 1 (Controller) -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M30,24h26c3.31,0 6,2.69 6,6v48c0,3.31 -2.69,6 -6,6H30c-3.31,0 -6,-2.69 -6,-6V30c0,-3.31 2.69,-6 6,-6z" />
+    <path
+        android:fillColor="#90CAF9"
+        android:pathData="M28,32h26v38H28z" />
+    <!-- Cast / Mirror waves to Phone 2 -->
+    <path
+        android:fillColor="#80CBC4"
+        android:pathData="M66,38h16c2.2,0 4,1.8 4,4v28c0,2.2 -1.8,4 -4,4H66c-2.2,0 -4,-1.8 -4,-4V42c0,-2.2 1.8,-4 4,-4z" />
+    <path
+        android:fillColor="#00897B"
+        android:pathData="M68,44h12v18H68z" />
+</vector>
