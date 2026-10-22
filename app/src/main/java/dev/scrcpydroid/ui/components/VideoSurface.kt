@@ -1,8 +1,8 @@
 package dev.scrcpydroid.ui.components
 
+import android.graphics.SurfaceTexture
 import android.view.Surface
-import android.view.SurfaceHolder
-import android.view.SurfaceView
+import android.view.TextureView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
@@ -21,20 +21,35 @@ fun VideoSurface(
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            SurfaceView(context).apply {
-                holder.addCallback(object : SurfaceHolder.Callback {
-                    override fun surfaceCreated(holder: SurfaceHolder) {
-                        currentOnSurfaceAvailable(holder.surface)
+            TextureView(context).apply {
+                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                    private var currentSurface: Surface? = null
+
+                    override fun onSurfaceTextureAvailable(st: SurfaceTexture, width: Int, height: Int) {
+                        currentSurface?.release()
+                        val surface = Surface(st)
+                        currentSurface = surface
+                        currentOnSurfaceAvailable(surface)
                     }
 
-                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                        // Surface dimensions updated
+                    override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, width: Int, height: Int) {
                     }
 
-                    override fun surfaceDestroyed(holder: SurfaceHolder) {
+                    override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
                         currentOnSurfaceDestroyed()
+                        currentSurface?.release()
+                        currentSurface = null
+                        return true
                     }
-                })
+
+                    override fun onSurfaceTextureUpdated(st: SurfaceTexture) {
+                    }
+                }
+
+                if (isAvailable && surfaceTexture != null) {
+                    val surface = Surface(surfaceTexture)
+                    currentOnSurfaceAvailable(surface)
+                }
             }
         }
     )

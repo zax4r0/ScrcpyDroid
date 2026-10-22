@@ -50,9 +50,7 @@ class VideoDecoder @Inject constructor() {
     }
 
     fun onSurfaceDestroyed() {
-        synchronized(this) {
-            currentSurface = null
-        }
+        stop()
     }
 
     fun clearConfig() {
@@ -66,8 +64,15 @@ class VideoDecoder @Inject constructor() {
         codecMime: String,
         width: Int,
         height: Int,
-        packetFlow: Flow<VideoPacket>
+        packetFlow: Flow<VideoPacket>,
+        initialConfig: ByteArray? = null
     ) {
+        if (initialConfig != null) {
+            synchronized(this) {
+                lastConfigData = initialConfig
+            }
+        }
+
         if (updateSurface(surface)) {
             return
         }
@@ -78,7 +83,7 @@ class VideoDecoder @Inject constructor() {
         isRunning.set(true)
         decodeJob = CoroutineScope(Dispatchers.Default).launch {
             try {
-                runDecoder(surface, codecMime, width, height, packetFlow)
+                runDecoder(surface, codecMime, width, height, packetFlow, initialConfig)
             } catch (e: CancellationException) {
                 // Expected when decoding is stopped
             } catch (e: Exception) {
@@ -94,13 +99,44 @@ class VideoDecoder @Inject constructor() {
         codecMime: String,
         width: Int,
         height: Int,
-        packetFlow: Flow<VideoPacket>
+        packetFlow: Flow<VideoPacket>,
+        initialConfig: ByteArray? = null
     ) {
         var mediaCodec: MediaCodec? = null
         var isConfigured = false
         val bufferInfo = MediaCodec.BufferInfo()
 
         try {
+            // If cached config is available, configure MediaCodec immediately!
+            val cachedConfig = synchronized(this@VideoDecoder) { lastConfigData } ?: initialConfig
+            if (cachedConfig != null) {
+                try {
+                    val format = MediaFormat.createVideoFormat(codecMime, width, height)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+                    }
+                    setupCodecSpecificData(format, codecMime, cachedConfig)
+                    val activeSurface = synchronized(this@VideoDecoder) { currentSurface } ?: surface
+                    val newCodec = MediaCodec.createDecoderByType(codecMime)
+                    newCodec.configure(format, activeSurface, null, 0)
+                    newCodec.start()
+                    mediaCodec = newCodec
+                    synchronized(this@VideoDecoder) {
+                        codec = newCodec
+                    }
+                    isConfigured = true
+
+                    launch(Dispatchers.Default) {
+                        drainOutput(newCodec, bufferInfo)
+                    }
+                    Log.d(TAG, "MediaCodec pre-configured with cached SPS/PPS")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Pre-configuration failed: ${e.message}")
+                    releaseCodec()
+                    isConfigured = false
+                }
+            }
+
             packetFlow.collect { packet ->
                 if (!isRunning.get()) return@collect
 
@@ -116,7 +152,7 @@ class VideoDecoder @Inject constructor() {
                         format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
                     }
 
-                    val configData = if (packet.isConfig) packet.data else synchronized(this@VideoDecoder) { lastConfigData }
+                    val configData = if (packet.isConfig) packet.data else (synchronized(this@VideoDecoder) { lastConfigData } ?: initialConfig)
                     if (configData != null) {
                         setupCodecSpecificData(format, codecMime, configData)
                     }

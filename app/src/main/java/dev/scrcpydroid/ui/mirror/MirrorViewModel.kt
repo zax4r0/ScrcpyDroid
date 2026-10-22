@@ -126,7 +126,8 @@ class MirrorViewModel @Inject constructor(
         val width = info?.width ?: 1080
         val height = info?.height ?: 1920
         val packetFlow = scrcpyClient.getVideoPacketFlow()
-        videoDecoder.start(surface, codecMime, width, height, packetFlow)
+        val initialConfig = scrcpyClient.getLastConfigPacket()?.data
+        videoDecoder.start(surface, codecMime, width, height, packetFlow, initialConfig)
 
         // Request a fresh IDR keyframe and config packet from scrcpy server
         viewModelScope.launch(Dispatchers.IO) {

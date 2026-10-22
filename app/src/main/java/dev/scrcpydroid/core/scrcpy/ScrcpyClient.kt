@@ -11,12 +11,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -55,6 +57,15 @@ class ScrcpyClient @Inject constructor(
     private var videoStream: AdbStream? = null
     private var audioStream: AdbStream? = null
     private var controlStream: AdbStream? = null
+
+    private var videoJob: Job? = null
+    private val _videoPacketFlow = MutableSharedFlow<VideoPacket>(
+        replay = 1,
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    @Volatile
+    private var lastConfigPacket: VideoPacket? = null
 
     private var videoParser: VideoPacketParser? = null
     private var controlWriter: ControlMessageWriter? = null
@@ -177,7 +188,10 @@ class ScrcpyClient @Inject constructor(
             deviceInfo = info
             android.util.Log.d(TAG, "Handshake received: $info")
 
-            // 10. Update state to Connected with device info
+            // 10. Start background persistent video reader
+            startVideoReader(parser)
+
+            // 11. Update state to Connected with device info
             _state.value = ScrcpyState.Connected(info)
         } catch (e: Exception) {
             val errorMessage = e.message ?: "Scrcpy connection failed"
@@ -188,21 +202,30 @@ class ScrcpyClient @Inject constructor(
         }
     }
 
-    fun getVideoPacketFlow(): Flow<VideoPacket> = flow {
-        val parser = videoParser ?: throw IllegalStateException("Video stream is not initialized")
-        _state.value = ScrcpyState.Streaming
-        try {
-            while (currentCoroutineContext().isActive) {
-                val packet = parser.readPacket()
-                emit(packet)
+    private fun startVideoReader(parser: VideoPacketParser) {
+        videoJob?.cancel()
+        videoJob = clientScope.launch(Dispatchers.IO) {
+            _state.value = ScrcpyState.Streaming
+            try {
+                while (isActive) {
+                    val packet = parser.readPacket()
+                    if (packet.isConfig) {
+                        lastConfigPacket = packet
+                    }
+                    _videoPacketFlow.emit(packet)
+                }
+            } catch (e: Exception) {
+                if (e !is CancellationException) {
+                    android.util.Log.e(TAG, "Video reader error: ${e.message}", e)
+                    _state.value = ScrcpyState.Error(e.message ?: "Video stream error")
+                }
             }
-        } catch (e: Exception) {
-            if (e !is CancellationException) {
-                _state.value = ScrcpyState.Error(e.message ?: "Video stream error")
-            }
-            throw e
         }
-    }.flowOn(Dispatchers.IO)
+    }
+
+    fun getVideoPacketFlow(): Flow<VideoPacket> = _videoPacketFlow.asSharedFlow()
+
+    fun getLastConfigPacket(): VideoPacket? = lastConfigPacket
 
     fun getControlWriter(): ControlMessageWriter? = controlWriter
 
@@ -213,6 +236,7 @@ class ScrcpyClient @Inject constructor(
         _state.value = ScrcpyState.Disconnected
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private suspend fun disconnectInternal() {
         try {
             val opts = lastOptions
@@ -236,6 +260,13 @@ class ScrcpyClient @Inject constructor(
         try {
             audioPlayer.stop()
         } catch (_: Exception) {}
+
+        try {
+            videoJob?.cancel()
+        } catch (_: Exception) {}
+        videoJob = null
+        lastConfigPacket = null
+        _videoPacketFlow.resetReplayCache()
 
         try {
             audioStream?.close()
