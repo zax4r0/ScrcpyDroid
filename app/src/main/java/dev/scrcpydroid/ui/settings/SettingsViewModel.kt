@@ -23,7 +23,6 @@ data class SettingsUiState(
     val showTouches: Boolean = false,
     val audioEnabled: Boolean = true,
     val audioDup: Boolean = false,
-    val blockControllerStatusBar: Boolean = true,
     val otaRepo: String = "zax4r0/ScrcpyDroid",
     val updateResult: UpdateCheckResult = UpdateCheckResult.Idle,
     val downloadProgress: DownloadProgress? = null
@@ -50,8 +49,7 @@ class SettingsViewModel @Inject constructor(
                         stayAwake = options.stayAwake,
                         showTouches = options.showTouches,
                         audioEnabled = options.audioEnabled,
-                        audioDup = options.audioDup,
-                        blockControllerStatusBar = options.blockControllerStatusBar
+                        audioDup = options.audioDup
                     )
                 }
             }
@@ -109,12 +107,6 @@ class SettingsViewModel @Inject constructor(
     fun setAudioDup(dup: Boolean) {
         viewModelScope.launch {
             settingsRepository.updateAudioDup(dup)
-        }
-    }
-
-    fun setBlockControllerStatusBar(block: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.updateBlockControllerStatusBar(block)
         }
     }
 

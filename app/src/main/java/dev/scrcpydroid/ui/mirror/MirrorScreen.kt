@@ -1,6 +1,8 @@
 package dev.scrcpydroid.ui.mirror
 
 import android.app.Activity
+import android.app.ActivityManager
+import android.content.Context
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
@@ -62,6 +65,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.scrcpydroid.ui.components.TouchInterceptor
 import dev.scrcpydroid.ui.components.VideoSurface
@@ -88,40 +94,40 @@ fun MirrorScreen(
         }
     }
 
-    // Hide system bars and enable screen pinning (Lock Task Mode) to block local status bar
     val context = LocalContext.current
     val view = LocalView.current
     val activity = context as? Activity
+    val activityManager = remember(context) {
+        context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+    }
 
-    LaunchedEffect(uiState.blockControllerStatusBar) {
-        if (uiState.blockControllerStatusBar) {
-            try {
-                activity?.startLockTask()
-            } catch (e: Exception) {
-                android.util.Log.w("MirrorScreen", "startLockTask not available or disabled", e)
+    var isPinned by remember {
+        mutableStateOf(
+            activityManager?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+        )
+    }
+
+    // Keep pinning state updated when resumed
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isPinned = activityManager?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
             }
-        } else {
-            try {
-                activity?.stopLockTask()
-            } catch (e: Exception) {
-                // Ignore if not in lock task
-            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
-    DisposableEffect(view, uiState.blockControllerStatusBar) {
+    // Hide system bars for immersive mirroring
+    DisposableEffect(view) {
         val window = activity?.window
         if (window != null) {
             val insetsController = WindowCompat.getInsetsController(window, view)
             insetsController.hide(WindowInsetsCompat.Type.systemBars())
             insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && uiState.blockControllerStatusBar) {
-                view.post {
-                    val topExclusion = android.graphics.Rect(0, 0, view.width, 200)
-                    view.systemGestureExclusionRects = listOf(topExclusion)
-                }
-            }
         }
         onDispose {
             try {
@@ -134,9 +140,6 @@ fun MirrorScreen(
             if (window != null) {
                 val insetsController = WindowCompat.getInsetsController(window, view)
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    view.systemGestureExclusionRects = emptyList()
-                }
             }
         }
     }
@@ -185,25 +188,24 @@ fun MirrorScreen(
                     val scaledX = (clampedX / videoWidthPx) * remoteWidth
                     val scaledY = (clampedY / videoHeightPx) * remoteHeight
 
-                    if (uiState.blockControllerStatusBar) {
-                        when (action) {
-                            0 -> { // ACTION_DOWN
-                                dragStartY = localY
-                                notificationTriggered = false
-                            }
-                            2 -> { // ACTION_MOVE
-                                val start = dragStartY
-                                if (start != null && start < (containerHeightPx * 0.15f) && !notificationTriggered) {
-                                    if (localY - start > 50f) {
-                                        viewModel.expandNotificationPanel()
-                                        notificationTriggered = true
-                                    }
+                    // Top drag detection for remote notification expansion
+                    when (action) {
+                        0 -> { // ACTION_DOWN
+                            dragStartY = localY
+                            notificationTriggered = false
+                        }
+                        2 -> { // ACTION_MOVE
+                            val start = dragStartY
+                            if (start != null && start < (containerHeightPx * 0.15f) && !notificationTriggered) {
+                                if (localY - start > 50f) {
+                                    viewModel.expandNotificationPanel()
+                                    notificationTriggered = true
                                 }
                             }
-                            1, 3 -> { // ACTION_UP, ACTION_CANCEL
-                                dragStartY = null
-                                notificationTriggered = false
-                            }
+                        }
+                        1, 3 -> { // ACTION_UP, ACTION_CANCEL
+                            dragStartY = null
+                            notificationTriggered = false
                         }
                     }
 
@@ -225,7 +227,7 @@ fun MirrorScreen(
                             viewModel.startDecoding(surface)
                         },
                         onSurfaceDestroyed = {
-                            viewModel.stopDecoding()
+                            viewModel.onSurfaceDestroyed()
                         }
                     )
                 }
@@ -374,6 +376,39 @@ fun MirrorScreen(
                     Icon(
                         imageVector = Icons.Default.Notifications,
                         contentDescription = "Notifications",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Pin / Unpin (App Pinning to block status bar)
+                FilledIconButton(
+                    onClick = {
+                        val currentlyPinned = activityManager?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+                        if (currentlyPinned) {
+                            try {
+                                activity?.stopLockTask()
+                                isPinned = false
+                            } catch (e: Exception) {
+                                android.util.Log.w("MirrorScreen", "stopLockTask failed", e)
+                            }
+                        } else {
+                            try {
+                                activity?.startLockTask()
+                                isPinned = true
+                            } catch (e: Exception) {
+                                android.util.Log.w("MirrorScreen", "startLockTask failed", e)
+                            }
+                        }
+                    },
+                    modifier = Modifier.size(42.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (isPinned) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PushPin,
+                        contentDescription = if (isPinned) "Unpin App" else "Pin App",
                         modifier = Modifier.size(20.dp)
                     )
                 }

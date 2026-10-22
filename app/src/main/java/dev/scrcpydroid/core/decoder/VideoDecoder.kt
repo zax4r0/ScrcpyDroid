@@ -30,6 +30,36 @@ class VideoDecoder @Inject constructor() {
     private var codec: MediaCodec? = null
     private var decodeJob: Job? = null
     private val isRunning = AtomicBoolean(false)
+    private var lastConfigData: ByteArray? = null
+    private var currentSurface: Surface? = null
+
+    fun updateSurface(newSurface: Surface): Boolean {
+        synchronized(this) {
+            val c = codec ?: return false
+            if (!isRunning.get()) return false
+            return try {
+                c.setOutputSurface(newSurface)
+                currentSurface = newSurface
+                Log.d(TAG, "setOutputSurface succeeded")
+                true
+            } catch (e: Exception) {
+                Log.w(TAG, "setOutputSurface failed, will restart decoder", e)
+                false
+            }
+        }
+    }
+
+    fun onSurfaceDestroyed() {
+        synchronized(this) {
+            currentSurface = null
+        }
+    }
+
+    fun clearConfig() {
+        synchronized(this) {
+            lastConfigData = null
+        }
+    }
 
     fun start(
         surface: Surface,
@@ -38,8 +68,13 @@ class VideoDecoder @Inject constructor() {
         height: Int,
         packetFlow: Flow<VideoPacket>
     ) {
+        if (updateSurface(surface)) {
+            return
+        }
+
         stop()
 
+        currentSurface = surface
         isRunning.set(true)
         decodeJob = CoroutineScope(Dispatchers.Default).launch {
             try {
@@ -69,18 +104,26 @@ class VideoDecoder @Inject constructor() {
             packetFlow.collect { packet ->
                 if (!isRunning.get()) return@collect
 
+                if (packet.isConfig) {
+                    synchronized(this@VideoDecoder) {
+                        lastConfigData = packet.data
+                    }
+                }
+
                 if (!isConfigured) {
                     val format = MediaFormat.createVideoFormat(codecMime, width, height)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
                     }
 
-                    if (packet.isConfig) {
-                        setupCodecSpecificData(format, codecMime, packet.data)
+                    val configData = if (packet.isConfig) packet.data else synchronized(this@VideoDecoder) { lastConfigData }
+                    if (configData != null) {
+                        setupCodecSpecificData(format, codecMime, configData)
                     }
 
+                    val activeSurface = synchronized(this@VideoDecoder) { currentSurface } ?: surface
                     val newCodec = MediaCodec.createDecoderByType(codecMime)
-                    newCodec.configure(format, surface, null, 0)
+                    newCodec.configure(format, activeSurface, null, 0)
                     newCodec.start()
                     mediaCodec = newCodec
                     synchronized(this@VideoDecoder) {
@@ -142,7 +185,16 @@ class VideoDecoder @Inject constructor() {
                 val outputIndex = mediaCodec.dequeueOutputBuffer(bufferInfo, DEQUEUE_TIMEOUT_US)
                 when {
                     outputIndex >= 0 -> {
-                        mediaCodec.releaseOutputBuffer(outputIndex, true)
+                        val surface = synchronized(this) { currentSurface }
+                        if (surface != null && surface.isValid) {
+                            try {
+                                mediaCodec.releaseOutputBuffer(outputIndex, true)
+                            } catch (e: Exception) {
+                                mediaCodec.releaseOutputBuffer(outputIndex, false)
+                            }
+                        } else {
+                            mediaCodec.releaseOutputBuffer(outputIndex, false)
+                        }
                     }
                     outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                         Log.d(TAG, "Decoder output format changed: ${mediaCodec.outputFormat}")
@@ -153,7 +205,7 @@ class VideoDecoder @Inject constructor() {
                 }
             } catch (e: Exception) {
                 if (isRunning.get()) {
-                    Log.e(TAG, "Error draining output buffer", e)
+                    Log.w(TAG, "Notice in drainOutput: ${e.message}")
                 }
                 break
             }
@@ -202,6 +254,7 @@ class VideoDecoder @Inject constructor() {
     @Synchronized
     fun stop() {
         isRunning.set(false)
+        currentSurface = null
         decodeJob?.cancel()
         decodeJob = null
         releaseCodec()

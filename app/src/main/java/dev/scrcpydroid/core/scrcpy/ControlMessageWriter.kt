@@ -10,6 +10,7 @@ class ControlMessageWriter(
         const val TYPE_INJECT_TOUCH_EVENT = 0x02
         const val TYPE_SET_DISPLAY_POWER = 0x0A
         const val TYPE_ROTATE_DEVICE = 0x0B
+        const val TYPE_RESET_VIDEO = 0x11
 
         const val ACTION_DOWN = 0
         const val ACTION_UP = 1
@@ -92,6 +93,11 @@ class ControlMessageWriter(
 
     fun collapsePanels() = synchronized(sink) {
         sink.writeByte(0x07)
+        sink.flush()
+    }
+
+    fun resetVideo() = synchronized(sink) {
+        sink.writeByte(TYPE_RESET_VIDEO)
         sink.flush()
     }
 }

@@ -362,29 +362,6 @@ fun SettingsScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
 
-                    // Block Local Status Bar
-                    ListItem(
-                        headlineContent = { Text("Block Local Status Bar") },
-                        supportingContent = { Text("Prevent controlling phone's status bar from pulling down during top gestures") },
-                        leadingContent = {
-                            Icon(
-                                imageVector = Icons.Default.Fullscreen,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = uiState.blockControllerStatusBar,
-                                onCheckedChange = { viewModel.setBlockControllerStatusBar(it) }
-                            )
-                        },
-                        modifier = Modifier.clickable { viewModel.setBlockControllerStatusBar(!uiState.blockControllerStatusBar) },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                    )
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-
                     // Forward Audio
                     ListItem(
                         headlineContent = { Text("Forward Audio") },

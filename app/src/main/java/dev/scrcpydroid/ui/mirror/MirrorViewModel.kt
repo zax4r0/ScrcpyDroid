@@ -26,8 +26,7 @@ data class MirrorUiState(
     val isConnected: Boolean = false,
     val showControls: Boolean = true,
     val errorMessage: String? = null,
-    val fps: Int = 60,
-    val blockControllerStatusBar: Boolean = true
+    val fps: Int = 60
 )
 
 @HiltViewModel
@@ -48,13 +47,6 @@ class MirrorViewModel @Inject constructor(
     init {
         val host: String? = savedStateHandle["host"]
         val port: Int = savedStateHandle["port"] ?: 5555
-
-        // Collect Settings
-        viewModelScope.launch {
-            settingsRepository.getOptions().collect { options ->
-                _uiState.update { it.copy(blockControllerStatusBar = options.blockControllerStatusBar) }
-            }
-        }
 
         // Collect ScrcpyClient state
         viewModelScope.launch {
@@ -134,10 +126,33 @@ class MirrorViewModel @Inject constructor(
         val height = info?.height ?: 1920
         val packetFlow = scrcpyClient.getVideoPacketFlow()
         videoDecoder.start(surface, codecMime, width, height, packetFlow)
+
+        // Request a fresh IDR keyframe and config packet from scrcpy server
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                scrcpyClient.getControlWriter()?.resetVideo()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to send resetVideo", e)
+            }
+        }
+    }
+
+    fun onSurfaceDestroyed() {
+        videoDecoder.onSurfaceDestroyed()
     }
 
     fun stopDecoding() {
         videoDecoder.stop()
+    }
+
+    fun resetVideo() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                scrcpyClient.getControlWriter()?.resetVideo()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed resetVideo", e)
+            }
+        }
     }
 
     fun onTouchEvent(action: Int, x: Float, y: Float, pressure: Float = 1.0f) {
@@ -242,6 +257,7 @@ class MirrorViewModel @Inject constructor(
     fun disconnect() {
         viewModelScope.launch {
             videoDecoder.stop()
+            videoDecoder.clearConfig()
             scrcpyClient.disconnect()
             _uiState.update { it.copy(isConnected = false) }
         }

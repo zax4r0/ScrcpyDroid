@@ -11,8 +11,7 @@ data class ScrcpyOptions(
     val controlEnabled: Boolean = true,
     val stayAwake: Boolean = true,
     val showTouches: Boolean = false,
-    val powerOffOnClose: Boolean = false,
-    val blockControllerStatusBar: Boolean = true
+    val powerOffOnClose: Boolean = false
 ) {
     companion object {
         const val SCRCPY_VERSION = "3.1"
