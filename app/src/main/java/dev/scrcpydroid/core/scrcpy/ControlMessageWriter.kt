@@ -84,4 +84,14 @@ class ControlMessageWriter(
         sink.writeByte(TYPE_ROTATE_DEVICE)
         sink.flush()
     }
+
+    fun expandNotificationPanel() = synchronized(sink) {
+        sink.writeByte(0x05)
+        sink.flush()
+    }
+
+    fun collapsePanels() = synchronized(sink) {
+        sink.writeByte(0x07)
+        sink.flush()
+    }
 }

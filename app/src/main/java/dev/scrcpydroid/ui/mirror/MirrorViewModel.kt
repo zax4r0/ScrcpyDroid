@@ -26,7 +26,8 @@ data class MirrorUiState(
     val isConnected: Boolean = false,
     val showControls: Boolean = true,
     val errorMessage: String? = null,
-    val fps: Int = 60
+    val fps: Int = 60,
+    val blockControllerStatusBar: Boolean = true
 )
 
 @HiltViewModel
@@ -47,6 +48,13 @@ class MirrorViewModel @Inject constructor(
     init {
         val host: String? = savedStateHandle["host"]
         val port: Int = savedStateHandle["port"] ?: 5555
+
+        // Collect Settings
+        viewModelScope.launch {
+            settingsRepository.getOptions().collect { options ->
+                _uiState.update { it.copy(blockControllerStatusBar = options.blockControllerStatusBar) }
+            }
+        }
 
         // Collect ScrcpyClient state
         viewModelScope.launch {
@@ -199,6 +207,26 @@ class MirrorViewModel @Inject constructor(
                 scrcpyClient.getControlWriter()?.rotateDevice()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed rotateDevice", e)
+            }
+        }
+    }
+
+    fun expandNotificationPanel() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                scrcpyClient.getControlWriter()?.expandNotificationPanel()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed expandNotificationPanel", e)
+            }
+        }
+    }
+
+    fun collapsePanels() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                scrcpyClient.getControlWriter()?.collapsePanels()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed collapsePanels", e)
             }
         }
     }

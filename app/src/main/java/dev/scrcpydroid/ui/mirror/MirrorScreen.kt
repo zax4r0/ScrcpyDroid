@@ -1,6 +1,7 @@
 package dev.scrcpydroid.ui.mirror
 
 import android.app.Activity
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -89,19 +90,32 @@ fun MirrorScreen(
     // Hide system bars for immersive mirroring
     val context = LocalContext.current
     val view = LocalView.current
-    DisposableEffect(view) {
+    DisposableEffect(view, uiState.blockControllerStatusBar) {
         val window = (context as? Activity)?.window
         if (window != null) {
             val insetsController = WindowCompat.getInsetsController(window, view)
             insetsController.hide(WindowInsetsCompat.Type.systemBars())
-            insetsController.systemBarsBehavior =
+            insetsController.systemBarsBehavior = if (uiState.blockControllerStatusBar) {
+                WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+            } else {
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && uiState.blockControllerStatusBar) {
+                view.post {
+                    val topExclusion = android.graphics.Rect(0, 0, view.width, 200)
+                    view.systemGestureExclusionRects = listOf(topExclusion)
+                }
+            }
         }
         onDispose {
             val window = (context as? Activity)?.window
             if (window != null) {
                 val insetsController = WindowCompat.getInsetsController(window, view)
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    view.systemGestureExclusionRects = emptyList()
+                }
             }
         }
     }
@@ -135,11 +149,37 @@ fun MirrorScreen(
             val videoWidthDp = with(density) { videoWidthPx.toDp() }
             val videoHeightDp = with(density) { videoHeightPx.toDp() }
 
+            var dragStartY by remember { mutableStateOf<Float?>(null) }
+            var notificationTriggered by remember { mutableStateOf(false) }
+
             TouchInterceptor(
                 modifier = Modifier.size(videoWidthDp, videoHeightDp),
                 onTouchEvent = { action, localX, localY, pressure ->
                     val scaledX = (localX / videoWidthPx) * remoteWidth
                     val scaledY = (localY / videoHeightPx) * remoteHeight
+
+                    if (uiState.blockControllerStatusBar) {
+                        when (action) {
+                            0 -> { // ACTION_DOWN
+                                dragStartY = localY
+                                notificationTriggered = false
+                            }
+                            2 -> { // ACTION_MOVE
+                                val start = dragStartY
+                                if (start != null && start < (containerHeightPx * 0.12f) && !notificationTriggered) {
+                                    if (localY - start > 60f) {
+                                        viewModel.expandNotificationPanel()
+                                        notificationTriggered = true
+                                    }
+                                }
+                            }
+                            1, 3 -> { // ACTION_UP, ACTION_CANCEL
+                                dragStartY = null
+                                notificationTriggered = false
+                            }
+                        }
+                    }
+
                     viewModel.onTouchEvent(
                         action = action,
                         x = scaledX,

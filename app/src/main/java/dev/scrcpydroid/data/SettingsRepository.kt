@@ -34,6 +34,7 @@ class SettingsRepository @Inject constructor(
         val SHOW_TOUCHES = booleanPreferencesKey("show_touches")
         val AUDIO_ENABLED = booleanPreferencesKey("audio_enabled")
         val AUDIO_DUP = booleanPreferencesKey("audio_dup")
+        val BLOCK_CONTROLLER_STATUS_BAR = booleanPreferencesKey("block_controller_status_bar")
         val OTA_REPO = stringPreferencesKey("ota_repo")
     }
 
@@ -54,6 +55,7 @@ class SettingsRepository @Inject constructor(
             val showTouches = preferences[Keys.SHOW_TOUCHES] ?: false
             val audioEnabled = preferences[Keys.AUDIO_ENABLED] ?: true
             val audioDup = preferences[Keys.AUDIO_DUP] ?: false
+            val blockControllerStatusBar = preferences[Keys.BLOCK_CONTROLLER_STATUS_BAR] ?: true
 
             val videoCodec = if (codecStr.equals("h265", ignoreCase = true)) {
                 VideoCodec.H265
@@ -72,7 +74,8 @@ class SettingsRepository @Inject constructor(
                 controlEnabled = true,
                 stayAwake = stayAwake,
                 showTouches = showTouches,
-                powerOffOnClose = false
+                powerOffOnClose = false,
+                blockControllerStatusBar = blockControllerStatusBar
             )
         }
 
@@ -92,6 +95,7 @@ class SettingsRepository @Inject constructor(
     suspend fun updateShowTouches(showTouches: Boolean) = updateOption(Keys.SHOW_TOUCHES, showTouches)
     suspend fun updateAudioEnabled(enabled: Boolean) = updateOption(Keys.AUDIO_ENABLED, enabled)
     suspend fun updateAudioDup(dup: Boolean) = updateOption(Keys.AUDIO_DUP, dup)
+    suspend fun updateBlockControllerStatusBar(block: Boolean) = updateOption(Keys.BLOCK_CONTROLLER_STATUS_BAR, block)
 
     fun getOtaRepo(): Flow<String> = context.settingsDataStore.data.map { preferences ->
         preferences[Keys.OTA_REPO] ?: "zax4r0/ScrcpyDroid"
