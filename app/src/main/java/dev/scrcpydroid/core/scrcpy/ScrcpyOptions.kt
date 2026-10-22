@@ -5,7 +5,9 @@ data class ScrcpyOptions(
     val videoBitRate: Int = 8_000_000,
     val maxFps: Int = 60,
     val videoCodec: VideoCodec = VideoCodec.H264,
-    val audioEnabled: Boolean = false,
+    val audioEnabled: Boolean = true,
+    val audioCodec: String = "raw",
+    val audioDup: Boolean = false,
     val controlEnabled: Boolean = true,
     val stayAwake: Boolean = true,
     val showTouches: Boolean = false,
@@ -21,6 +23,10 @@ data class ScrcpyOptions(
         append(" tunnel_forward=true")
         append(" video=true")
         append(" audio=$audioEnabled")
+        if (audioEnabled) {
+            append(" audio_codec=$audioCodec")
+            append(" audio_dup=$audioDup")
+        }
         append(" control=$controlEnabled")
         append(" cleanup=false")
         append(" max_size=$maxSize")
@@ -30,6 +36,7 @@ data class ScrcpyOptions(
         append(" send_dummy_byte=true")
         append(" send_device_meta=true")
         append(" send_frame_meta=true")
+        append(" send_codec_meta=true")
         append(" stay_awake=$stayAwake")
         append(" show_touches=$showTouches")
         append(" power_off_on_close=$powerOffOnClose")

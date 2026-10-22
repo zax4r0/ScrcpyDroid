@@ -32,6 +32,8 @@ class SettingsRepository @Inject constructor(
         val VIDEO_CODEC = stringPreferencesKey("video_codec")
         val STAY_AWAKE = booleanPreferencesKey("stay_awake")
         val SHOW_TOUCHES = booleanPreferencesKey("show_touches")
+        val AUDIO_ENABLED = booleanPreferencesKey("audio_enabled")
+        val AUDIO_DUP = booleanPreferencesKey("audio_dup")
         val OTA_REPO = stringPreferencesKey("ota_repo")
     }
 
@@ -50,6 +52,8 @@ class SettingsRepository @Inject constructor(
             val codecStr = preferences[Keys.VIDEO_CODEC] ?: "h264"
             val stayAwake = preferences[Keys.STAY_AWAKE] ?: true
             val showTouches = preferences[Keys.SHOW_TOUCHES] ?: false
+            val audioEnabled = preferences[Keys.AUDIO_ENABLED] ?: true
+            val audioDup = preferences[Keys.AUDIO_DUP] ?: false
 
             val videoCodec = if (codecStr.equals("h265", ignoreCase = true)) {
                 VideoCodec.H265
@@ -62,7 +66,9 @@ class SettingsRepository @Inject constructor(
                 videoBitRate = videoBitRate,
                 maxFps = maxFps,
                 videoCodec = videoCodec,
-                audioEnabled = false,
+                audioEnabled = audioEnabled,
+                audioCodec = "raw",
+                audioDup = audioDup,
                 controlEnabled = true,
                 stayAwake = stayAwake,
                 showTouches = showTouches,
@@ -84,6 +90,8 @@ class SettingsRepository @Inject constructor(
     suspend fun updateVideoCodec(codec: String) = updateOption(Keys.VIDEO_CODEC, codec)
     suspend fun updateStayAwake(stayAwake: Boolean) = updateOption(Keys.STAY_AWAKE, stayAwake)
     suspend fun updateShowTouches(showTouches: Boolean) = updateOption(Keys.SHOW_TOUCHES, showTouches)
+    suspend fun updateAudioEnabled(enabled: Boolean) = updateOption(Keys.AUDIO_ENABLED, enabled)
+    suspend fun updateAudioDup(dup: Boolean) = updateOption(Keys.AUDIO_DUP, dup)
 
     fun getOtaRepo(): Flow<String> = context.settingsDataStore.data.map { preferences ->
         preferences[Keys.OTA_REPO] ?: "zax4r0/ScrcpyDroid"

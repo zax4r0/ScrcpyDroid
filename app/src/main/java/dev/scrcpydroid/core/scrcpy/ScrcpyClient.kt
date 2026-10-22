@@ -23,6 +23,8 @@ import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
+import dev.scrcpydroid.core.audio.AudioPlayer
+
 sealed interface ScrcpyState {
     data object Disconnected : ScrcpyState
     data object Connecting : ScrcpyState
@@ -36,6 +38,7 @@ sealed interface ScrcpyState {
 class ScrcpyClient @Inject constructor(
     private val adbConnectionManager: AdbConnectionManager,
     private val adbKeyManager: AdbKeyManager,
+    private val audioPlayer: AudioPlayer,
     @ApplicationContext private val context: Context
 ) {
     companion object {
@@ -49,6 +52,7 @@ class ScrcpyClient @Inject constructor(
 
     private var serverStream: AdbStream? = null
     private var videoStream: AdbStream? = null
+    private var audioStream: AdbStream? = null
     private var controlStream: AdbStream? = null
 
     private var videoParser: VideoPacketParser? = null
@@ -101,8 +105,24 @@ class ScrcpyClient @Inject constructor(
             }
             videoStream = vStream
 
-            // 7. Open control stream BEFORE reading handshake
-            // scrcpy-server blocks in DesktopConnection.open() until all requested sockets (video + control) are accepted!
+            // 7. Connect audio stream (if audioEnabled)
+            if (options.audioEnabled) {
+                try {
+                    android.util.Log.d(TAG, "Opening audio stream to localabstract:scrcpy")
+                    val aStream = adbConnectionManager.openStream("localabstract:scrcpy")
+                    audioStream = aStream
+                    audioPlayer.start(aStream.source, clientScope)
+                    android.util.Log.d(TAG, "Audio stream opened and AudioPlayer started")
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "Could not open audio stream: ${e.message}")
+                    audioStream = null
+                }
+            } else {
+                audioStream = null
+            }
+
+            // 8. Open control stream BEFORE reading handshake
+            // scrcpy-server blocks in DesktopConnection.open() until all requested sockets (video, audio, control) are accepted!
             if (options.controlEnabled) {
                 android.util.Log.d(TAG, "Opening control stream...")
                 val cStream = adbConnectionManager.openStream("localabstract:scrcpy")
@@ -114,7 +134,7 @@ class ScrcpyClient @Inject constructor(
                 controlWriter = null
             }
 
-            // 8. Now read handshake from video stream (sent by server once all connections are accepted)
+            // 9. Now read handshake from video stream (sent by server once all connections are accepted)
             android.util.Log.d(TAG, "Reading scrcpy handshake...")
             val parser = VideoPacketParser(vStream.source)
             videoParser = parser
@@ -122,7 +142,7 @@ class ScrcpyClient @Inject constructor(
             deviceInfo = info
             android.util.Log.d(TAG, "Handshake received: $info")
 
-            // 9. Update state to Connected with device info
+            // 10. Update state to Connected with device info
             _state.value = ScrcpyState.Connected(info)
         } catch (e: Exception) {
             val errorMessage = e.message ?: "Scrcpy connection failed"
@@ -159,6 +179,15 @@ class ScrcpyClient @Inject constructor(
     }
 
     private suspend fun disconnectInternal() {
+        try {
+            audioPlayer.stop()
+        } catch (_: Exception) {}
+
+        try {
+            audioStream?.close()
+        } catch (_: Exception) {}
+        audioStream = null
+
         try {
             controlStream?.close()
         } catch (_: Exception) {}
