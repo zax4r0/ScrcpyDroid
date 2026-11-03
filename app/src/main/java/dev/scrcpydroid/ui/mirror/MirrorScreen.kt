@@ -3,8 +3,10 @@ package dev.scrcpydroid.ui.mirror
 import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
+import android.hardware.display.DisplayManager
 import android.os.Build
-import android.view.OrientationEventListener
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -66,6 +68,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -134,27 +137,41 @@ fun MirrorScreen(
         }
     }
 
-    // Real-time orientation sync with controller device (disables auto-rotate on controlled device and mirrors exact orientation)
-    DisposableEffect(context) {
-        val orientationListener = object : OrientationEventListener(context) {
-            override fun onOrientationChanged(orientation: Int) {
-                if (orientation == ORIENTATION_UNKNOWN) return
+    val configuration = LocalConfiguration.current
 
-                val targetRotation = when {
-                    orientation in 45..134 -> android.view.Surface.ROTATION_270
-                    orientation in 135..224 -> android.view.Surface.ROTATION_180
-                    orientation in 225..314 -> android.view.Surface.ROTATION_90
-                    orientation >= 315 || orientation < 45 -> android.view.Surface.ROTATION_0
-                    else -> android.view.Surface.ROTATION_0
+    // Synchronize remote orientation whenever the controller's actual display orientation or screen configuration updates
+    LaunchedEffect(configuration.orientation, configuration.screenWidthDp, configuration.screenHeightDp) {
+        val currentRotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            activity?.display?.rotation ?: android.view.Surface.ROTATION_0
+        } else {
+            @Suppress("DEPRECATION")
+            activity?.windowManager?.defaultDisplay?.rotation ?: android.view.Surface.ROTATION_0
+        }
+        viewModel.syncRotation(currentRotation)
+    }
+
+    // Listen to actual display orientation changes via DisplayManager (no gyro/accelerometer sensor polling)
+    DisposableEffect(context) {
+        val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+        val displayListener = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) {}
+            override fun onDisplayRemoved(displayId: Int) {}
+            override fun onDisplayChanged(displayId: Int) {
+                val currentDisplay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    activity?.display
+                } else {
+                    @Suppress("DEPRECATION")
+                    activity?.windowManager?.defaultDisplay
                 }
-                viewModel.syncRotation(targetRotation)
+                if (currentDisplay != null && currentDisplay.displayId == displayId) {
+                    viewModel.syncRotation(currentDisplay.rotation)
+                }
             }
         }
 
-        if (orientationListener.canDetectOrientation()) {
-            orientationListener.enable()
-        }
+        displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
 
+        // Sync initial display rotation immediately
         val initialRotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             activity?.display?.rotation ?: android.view.Surface.ROTATION_0
         } else {
@@ -164,7 +181,7 @@ fun MirrorScreen(
         viewModel.syncRotation(initialRotation)
 
         onDispose {
-            orientationListener.disable()
+            displayManager?.unregisterDisplayListener(displayListener)
         }
     }
 

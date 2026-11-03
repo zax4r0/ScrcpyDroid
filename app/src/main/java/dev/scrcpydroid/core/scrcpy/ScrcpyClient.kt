@@ -95,6 +95,13 @@ class ScrcpyClient @Inject constructor(
             val adbResult = adbConnectionManager.connect(host, port)
             val dadb = adbResult.getOrThrow()
 
+            // Disable auto-rotate on controlled device so it follows controller device exclusively
+            try {
+                dadb.shell("settings put system accelerometer_rotation 0")
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "Failed disabling accelerometer_rotation: ${e.message}")
+            }
+
             // Auto-wake & auto-unlock target device if enabled
             if (options.autoUnlockOnConnect) {
                 unlockDevice(options.devicePassword)
