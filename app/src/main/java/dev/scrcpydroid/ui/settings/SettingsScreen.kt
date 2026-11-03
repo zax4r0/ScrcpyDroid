@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Brightness4
 import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DoNotDisturbOn
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MovieFilter
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.SlowMotionVideo
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TouchApp
@@ -80,10 +82,6 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val scrollState = rememberScrollState()
-    var showPasswordDialog by remember { mutableStateOf(false) }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -108,14 +106,124 @@ fun SettingsScreen(
             )
         }
     ) { innerPadding ->
+        SettingsContent(
+            viewModel = viewModel,
+            modifier = Modifier.padding(innerPadding)
+        )
+    }
+}
+
+@Composable
+fun SettingsContent(
+    viewModel: SettingsViewModel = hiltViewModel(),
+    modifier: Modifier = Modifier
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val scrollState = rememberScrollState()
+    var showPasswordDialog by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
                 .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            // Appearance & Theme Section
+            SectionHeader(title = "APPEARANCE")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Dynamic Color (Monet)
+                    ListItem(
+                        headlineContent = { Text("Dynamic Color (Monet)") },
+                        supportingContent = { Text("Match app colors to your system wallpaper (Android 12+)") },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Default.Palette,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = uiState.dynamicColor,
+                                onCheckedChange = { viewModel.setDynamicColor(it) }
+                            )
+                        },
+                        modifier = Modifier.clickable { viewModel.setDynamicColor(!uiState.dynamicColor) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    // Theme Mode
+                    var themeExpanded by remember { mutableStateOf(false) }
+                    ListItem(
+                        headlineContent = { Text("Theme Mode") },
+                        supportingContent = { Text("Choose dark, light, or follow system theme") },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Default.Brightness4,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Box {
+                                TextButton(onClick = { themeExpanded = true }) {
+                                    Text(
+                                        text = when (uiState.darkThemeMode) {
+                                            "dark" -> "Dark"
+                                            "light" -> "Light"
+                                            else -> "Follow System"
+                                        },
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = null
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = themeExpanded,
+                                    onDismissRequest = { themeExpanded = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Follow System") },
+                                        onClick = {
+                                            viewModel.setDarkThemeMode("system")
+                                            themeExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Dark Theme") },
+                                        onClick = {
+                                            viewModel.setDarkThemeMode("dark")
+                                            themeExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Light Theme") },
+                                        onClick = {
+                                            viewModel.setDarkThemeMode("light")
+                                            themeExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+                }
+            }
+
             // Video Section
             SectionHeader(title = "VIDEO")
             Card(
@@ -726,7 +834,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SectionHeader(title: String) {
+internal fun SectionHeader(title: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.labelLarge,
@@ -736,7 +844,7 @@ private fun SectionHeader(title: String) {
     )
 }
 
-private fun resolutionToLabel(maxSize: Int): String = when (maxSize) {
+internal fun resolutionToLabel(maxSize: Int): String = when (maxSize) {
     1280 -> "720p"
     1920 -> "1080p"
     2560 -> "1440p"

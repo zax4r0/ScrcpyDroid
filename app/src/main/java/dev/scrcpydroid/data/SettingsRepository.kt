@@ -14,6 +14,7 @@ import dev.scrcpydroid.core.scrcpy.ScrcpyOptions
 import dev.scrcpydroid.core.scrcpy.VideoCodec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 import javax.inject.Inject
@@ -23,7 +24,8 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
 
 @Singleton
 class SettingsRepository @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val connectionRepository: ConnectionRepository
 ) {
     object Keys {
         val MAX_SIZE = intPreferencesKey("max_size")
@@ -41,6 +43,8 @@ class SettingsRepository @Inject constructor(
         val CLIPBOARD_SYNC = booleanPreferencesKey("clipboard_sync")
         val AUTO_UNLOCK_ON_CONNECT = booleanPreferencesKey("auto_unlock_on_connect")
         val DEVICE_PASSWORD = stringPreferencesKey("device_password")
+        val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val DARK_THEME_MODE = stringPreferencesKey("dark_theme_mode")
         val OTA_REPO = stringPreferencesKey("ota_repo")
     }
 
@@ -120,6 +124,43 @@ class SettingsRepository @Inject constructor(
     suspend fun updateClipboardSync(sync: Boolean) = updateOption(Keys.CLIPBOARD_SYNC, sync)
     suspend fun updateAutoUnlockOnConnect(autoUnlock: Boolean) = updateOption(Keys.AUTO_UNLOCK_ON_CONNECT, autoUnlock)
     suspend fun updateDevicePassword(password: String) = updateOption(Keys.DEVICE_PASSWORD, password)
+
+    fun isDynamicColor(): Flow<Boolean> = context.settingsDataStore.data.map { preferences ->
+        preferences[Keys.DYNAMIC_COLOR] ?: true
+    }
+
+    suspend fun updateDynamicColor(enabled: Boolean) = updateOption(Keys.DYNAMIC_COLOR, enabled)
+
+    fun getDarkThemeMode(): Flow<String> = context.settingsDataStore.data.map { preferences ->
+        preferences[Keys.DARK_THEME_MODE] ?: "system"
+    }
+
+    suspend fun updateDarkThemeMode(mode: String) = updateOption(Keys.DARK_THEME_MODE, mode)
+
+    suspend fun getOptionsForDevice(host: String, port: Int): ScrcpyOptions {
+        val global = getOptions().first()
+        val connection = connectionRepository.getConnection(host, port)
+        val dev = connection?.customSettings ?: return global
+        if (dev.useGlobalSettings) return global
+
+        val videoCodec = when (dev.videoCodec?.lowercase()) {
+            "h265" -> VideoCodec.H265
+            "h264" -> VideoCodec.H264
+            else -> global.videoCodec
+        }
+
+        return global.copy(
+            maxSize = dev.maxSize ?: global.maxSize,
+            videoBitRate = dev.videoBitRate ?: global.videoBitRate,
+            maxFps = dev.maxFps ?: global.maxFps,
+            videoCodec = videoCodec,
+            audioEnabled = dev.audioEnabled ?: global.audioEnabled,
+            autoUnlockOnConnect = dev.autoUnlock ?: global.autoUnlockOnConnect,
+            devicePassword = dev.devicePassword ?: global.devicePassword,
+            turnScreenOffOnConnect = dev.turnScreenOffOnConnect ?: global.turnScreenOffOnConnect,
+            stayAwake = dev.stayAwake ?: global.stayAwake
+        )
+    }
 
     fun getOtaRepo(): Flow<String> = context.settingsDataStore.data.map { preferences ->
         preferences[Keys.OTA_REPO] ?: "zax4r0/ScrcpyDroid"

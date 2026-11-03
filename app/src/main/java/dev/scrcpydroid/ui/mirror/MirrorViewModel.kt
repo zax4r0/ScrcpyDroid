@@ -150,7 +150,7 @@ class MirrorViewModel @Inject constructor(
     private fun autoConnect(host: String, port: Int) {
         viewModelScope.launch {
             try {
-                val options = settingsRepository.getOptions().first()
+                val options = settingsRepository.getOptionsForDevice(host, port)
                 _uiState.update { it.copy(fps = options.maxFps) }
                 scrcpyClient.connect(host, port, options)
             } catch (e: Exception) {
@@ -177,7 +177,7 @@ class MirrorViewModel @Inject constructor(
                 videoDecoder.stop()
                 scrcpyClient.disconnect()
                 delay(400)
-                val options = settingsRepository.getOptions().first()
+                val options = settingsRepository.getOptionsForDevice(h, port)
                 scrcpyClient.connect(h, port, options)
                 Log.i(TAG, "Auto-reconnect successful!")
                 _uiState.update { it.copy(isConnected = true, errorMessage = null) }
@@ -363,7 +363,8 @@ class MirrorViewModel @Inject constructor(
     fun unlockDevice() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val options = settingsRepository.getOptions().first()
+                val h = host
+                val options = if (h != null) settingsRepository.getOptionsForDevice(h, port) else settingsRepository.getOptions().first()
                 scrcpyClient.unlockDevice(options.devicePassword)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed manual unlockDevice", e)
@@ -382,7 +383,8 @@ class MirrorViewModel @Inject constructor(
             resetVideo()
             viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    val options = settingsRepository.getOptions().first()
+                    val h = host
+                    val options = if (h != null) settingsRepository.getOptionsForDevice(h, port) else settingsRepository.getOptions().first()
                     if (options.autoUnlockOnConnect) {
                         scrcpyClient.unlockDevice(options.devicePassword)
                     }

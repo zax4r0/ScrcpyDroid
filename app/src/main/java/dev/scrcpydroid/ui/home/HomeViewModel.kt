@@ -15,6 +15,7 @@ import dev.scrcpydroid.core.scrcpy.ScrcpyState
 import dev.scrcpydroid.data.ConnectionRepository
 import dev.scrcpydroid.data.SettingsRepository
 import dev.scrcpydroid.data.model.DeviceConnection
+import dev.scrcpydroid.data.model.DeviceSettings
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -236,7 +237,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isConnecting = true, errorMessage = null) }
             try {
-                val options = settingsRepository.getOptions().first()
+                val options = settingsRepository.getOptionsForDevice(trimmedHost, portInt)
                 scrcpyClient.connect(trimmedHost, portInt, options)
 
                 val deviceInfo = scrcpyClient.getDeviceInfo()
@@ -289,6 +290,18 @@ class HomeViewModel @Inject constructor(
 
     fun dismissUpdateBanner() {
         _uiState.update { it.copy(updateResult = UpdateCheckResult.Idle) }
+    }
+
+    fun onRenameConnection(connection: DeviceConnection, newName: String) {
+        viewModelScope.launch {
+            connectionRepository.renameConnection(connection.host, connection.port, newName)
+        }
+    }
+
+    fun onUpdateDeviceSettings(host: String, port: Int, settings: DeviceSettings) {
+        viewModelScope.launch {
+            connectionRepository.updateDeviceSettings(host, port, settings)
+        }
     }
 
     fun onDeleteConnection(connection: DeviceConnection) {

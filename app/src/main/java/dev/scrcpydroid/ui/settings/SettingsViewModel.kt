@@ -30,6 +30,8 @@ data class SettingsUiState(
     val clipboardSync: Boolean = true,
     val autoUnlockOnConnect: Boolean = true,
     val devicePassword: String = "",
+    val dynamicColor: Boolean = true,
+    val darkThemeMode: String = "system",
     val otaRepo: String = "zax4r0/ScrcpyDroid",
     val appVersion: String = "1.0.0",
     val updateResult: UpdateCheckResult = UpdateCheckResult.Idle,
@@ -75,6 +77,18 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.getOtaRepo().collect { repo ->
                 _uiState.update { it.copy(otaRepo = repo) }
+            }
+        }
+
+        viewModelScope.launch {
+            settingsRepository.isDynamicColor().collect { dynamic ->
+                _uiState.update { it.copy(dynamicColor = dynamic) }
+            }
+        }
+
+        viewModelScope.launch {
+            settingsRepository.getDarkThemeMode().collect { mode ->
+                _uiState.update { it.copy(darkThemeMode = mode) }
             }
         }
     }
@@ -166,6 +180,18 @@ class SettingsViewModel @Inject constructor(
     fun setDevicePassword(password: String) {
         viewModelScope.launch {
             settingsRepository.updateDevicePassword(password)
+        }
+    }
+
+    fun setDynamicColor(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateDynamicColor(enabled)
+        }
+    }
+
+    fun setDarkThemeMode(mode: String) {
+        viewModelScope.launch {
+            settingsRepository.updateDarkThemeMode(mode)
         }
     }
 

@@ -9,8 +9,10 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.scrcpydroid.data.model.DeviceConnection
+import dev.scrcpydroid.data.model.DeviceSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -48,6 +50,11 @@ class ConnectionRepository @Inject constructor(
             }
         }
 
+    suspend fun getConnection(host: String, port: Int): DeviceConnection? {
+        val list = getRecentConnections().first()
+        return list.find { it.host == host && it.port == port }
+    }
+
     suspend fun addConnection(connection: DeviceConnection) {
         context.connectionDataStore.edit { preferences ->
             val jsonString = preferences[RECENT_CONNECTIONS]
@@ -61,9 +68,53 @@ class ConnectionRepository @Inject constructor(
                 }
             }
 
-            val updatedList = (listOf(connection) + currentList.filterNot {
+            val existing = currentList.find { it.host == connection.host && it.port == connection.port }
+            val merged = if (existing != null) {
+                connection.copy(
+                    customName = existing.customName.ifBlank { connection.customName },
+                    customSettings = existing.customSettings ?: connection.customSettings
+                )
+            } else {
+                connection
+            }
+
+            val updatedList = (listOf(merged) + currentList.filterNot {
                 it.host == connection.host && it.port == connection.port
-            }).take(10)
+            }).take(20)
+
+            preferences[RECENT_CONNECTIONS] = json.encodeToString(updatedList)
+        }
+    }
+
+    suspend fun renameConnection(host: String, port: Int, newName: String) {
+        context.connectionDataStore.edit { preferences ->
+            val jsonString = preferences[RECENT_CONNECTIONS] ?: return@edit
+            val currentList = try {
+                json.decodeFromString<List<DeviceConnection>>(jsonString)
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            val updatedList = currentList.map {
+                if (it.host == host && it.port == port) it.copy(customName = newName.trim()) else it
+            }
+
+            preferences[RECENT_CONNECTIONS] = json.encodeToString(updatedList)
+        }
+    }
+
+    suspend fun updateDeviceSettings(host: String, port: Int, settings: DeviceSettings) {
+        context.connectionDataStore.edit { preferences ->
+            val jsonString = preferences[RECENT_CONNECTIONS] ?: return@edit
+            val currentList = try {
+                json.decodeFromString<List<DeviceConnection>>(jsonString)
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            val updatedList = currentList.map {
+                if (it.host == host && it.port == port) it.copy(customSettings = settings) else it
+            }
 
             preferences[RECENT_CONNECTIONS] = json.encodeToString(updatedList)
         }
