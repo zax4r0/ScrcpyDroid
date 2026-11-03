@@ -42,7 +42,9 @@ data class MirrorUiState(
     val showControls: Boolean = true,
     val errorMessage: String? = null,
     val fps: Int = 60,
-    val isDisplayPowerOn: Boolean = true
+    val isDisplayPowerOn: Boolean = true,
+    val videoWidth: Int = 1080,
+    val videoHeight: Int = 1920
 )
 
 @HiltViewModel
@@ -92,6 +94,25 @@ class MirrorViewModel @Inject constructor(
 
         // Start clipboard synchronization with remote device
         clipboardSyncManager.start(viewModelScope)
+
+        // Observe dynamic decoded video dimensions (supports live screen rotation and resolution changes)
+        viewModelScope.launch {
+            videoDecoder.videoSize.collect { size ->
+                if (size != null) {
+                    Log.i(TAG, "Decoded stream dimensions updated: ${size.first}x${size.second}")
+                    _uiState.update { current ->
+                        current.copy(
+                            videoWidth = size.first,
+                            videoHeight = size.second,
+                            deviceInfo = current.deviceInfo?.copy(
+                                width = size.first,
+                                height = size.second
+                            )
+                        )
+                    }
+                }
+            }
+        }
 
         // Collect ScrcpyClient state
         viewModelScope.launch {
@@ -247,9 +268,8 @@ class MirrorViewModel @Inject constructor(
     }
 
     fun onTouchEvent(action: Int, x: Float, y: Float, pressure: Float = 1.0f) {
-        val info = _uiState.value.deviceInfo ?: scrcpyClient.getDeviceInfo()
-        val width = info?.width ?: 1080
-        val height = info?.height ?: 1920
+        val width = _uiState.value.videoWidth
+        val height = _uiState.value.videoHeight
 
         val scrcpyAction = when (action) {
             0 -> ControlMessageWriter.ACTION_DOWN

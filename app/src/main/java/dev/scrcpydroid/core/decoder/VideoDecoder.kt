@@ -12,6 +12,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.nio.ByteBuffer
@@ -31,6 +34,9 @@ class VideoDecoder @Inject constructor() {
     private var decodeJob: Job? = null
     private val isRunning = AtomicBoolean(false)
     private var lastConfigData: ByteArray? = null
+
+    private val _videoSize = MutableStateFlow<Pair<Int, Int>?>(null)
+    val videoSize: StateFlow<Pair<Int, Int>?> = _videoSize.asStateFlow()
 
     // Session counter: bumped on every start(). Loops from an older session compare against it
     // so they can never shut down a newer decoder session after a quick stop() -> start().
@@ -91,6 +97,8 @@ class VideoDecoder @Inject constructor() {
         }
 
         stop()
+
+        _videoSize.value = width to height
 
         val gen: Int
         synchronized(this) {
@@ -250,21 +258,28 @@ class VideoDecoder @Inject constructor() {
         while (isSessionActive(gen)) {
             try {
                 var outputIndex = mediaCodec.dequeueOutputBuffer(bufferInfo, DEQUEUE_TIMEOUT_US)
-                while (outputIndex >= 0 && isSessionActive(gen)) {
-                    val surface = synchronized(this) { currentSurface }
-                    if (surface != null && surface.isValid) {
-                        try {
-                            mediaCodec.releaseOutputBuffer(outputIndex, true)
-                        } catch (e: Exception) {
-                            try { mediaCodec.releaseOutputBuffer(outputIndex, false) } catch (_: Exception) {}
+                while (isSessionActive(gen)) {
+                    when {
+                        outputIndex >= 0 -> {
+                            val surface = synchronized(this) { currentSurface }
+                            if (surface != null && surface.isValid) {
+                                try {
+                                    mediaCodec.releaseOutputBuffer(outputIndex, true)
+                                } catch (e: Exception) {
+                                    try { mediaCodec.releaseOutputBuffer(outputIndex, false) } catch (_: Exception) {}
+                                }
+                            } else {
+                                try { mediaCodec.releaseOutputBuffer(outputIndex, false) } catch (_: Exception) {}
+                            }
                         }
-                    } else {
-                        try { mediaCodec.releaseOutputBuffer(outputIndex, false) } catch (_: Exception) {}
+                        outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                            handleFormatChanged(mediaCodec.outputFormat)
+                        }
+                        else -> {
+                            break
+                        }
                     }
                     outputIndex = mediaCodec.dequeueOutputBuffer(bufferInfo, 0L)
-                }
-                if (outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    Log.d(TAG, "Decoder output format changed: ${mediaCodec.outputFormat}")
                 }
             } catch (e: Exception) {
                 if (isSessionActive(gen)) {
@@ -275,6 +290,25 @@ class VideoDecoder @Inject constructor() {
                 }
                 break
             }
+        }
+    }
+
+    private fun handleFormatChanged(format: MediaFormat) {
+        try {
+            val width = format.getInteger(MediaFormat.KEY_WIDTH)
+            val height = format.getInteger(MediaFormat.KEY_HEIGHT)
+            val cropLeft = if (format.containsKey("crop-left")) format.getInteger("crop-left") else 0
+            val cropRight = if (format.containsKey("crop-right")) format.getInteger("crop-right") else width - 1
+            val cropTop = if (format.containsKey("crop-top")) format.getInteger("crop-top") else 0
+            val cropBottom = if (format.containsKey("crop-bottom")) format.getInteger("crop-bottom") else height - 1
+
+            val actualWidth = (cropRight - cropLeft + 1).coerceAtLeast(1)
+            val actualHeight = (cropBottom - cropTop + 1).coerceAtLeast(1)
+
+            Log.i(TAG, "Decoder output format changed: ${actualWidth}x${actualHeight} (raw: ${width}x${height})")
+            _videoSize.value = actualWidth to actualHeight
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed reading dimensions from outputFormat: ${e.message}")
         }
     }
 

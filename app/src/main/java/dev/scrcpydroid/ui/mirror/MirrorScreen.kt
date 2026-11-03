@@ -215,8 +215,8 @@ fun MirrorScreen(
         contentAlignment = Alignment.Center
     ) {
         val density = LocalDensity.current
-        val remoteWidth = uiState.deviceInfo?.width ?: 1080
-        val remoteHeight = uiState.deviceInfo?.height ?: 1920
+        val remoteWidth = uiState.videoWidth
+        val remoteHeight = uiState.videoHeight
 
         BoxWithConstraints(
             modifier = Modifier.fillMaxSize(),
