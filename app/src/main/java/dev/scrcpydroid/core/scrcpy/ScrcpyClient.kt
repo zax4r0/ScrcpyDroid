@@ -95,12 +95,18 @@ class ScrcpyClient @Inject constructor(
             val adbResult = adbConnectionManager.connect(host, port)
             val dadb = adbResult.getOrThrow()
 
-            // Auto-wake target device if enabled
-            if (options.autoWakeOnConnect) {
+            // Auto-wake & auto-unlock target device if enabled
+            if (options.autoWakeOnConnect || options.autoUnlockOnConnect) {
                 try {
-                    dadb.shell("input keyevent 224 ; wm dismiss-keyguard")
+                    val unlockCmd = if (options.autoUnlockOnConnect) {
+                        ScrcpyOptions.buildUnlockCommand(options.devicePassword)
+                    } else {
+                        "input keyevent 224 ; wm dismiss-keyguard"
+                    }
+                    dadb.shell(unlockCmd)
+                    android.util.Log.d(TAG, "Executed wake/unlock on connect")
                 } catch (e: Exception) {
-                    android.util.Log.w(TAG, "Failed autoWakeOnConnect: ${e.message}")
+                    android.util.Log.w(TAG, "Failed autoWake/autoUnlock: ${e.message}")
                 }
             }
 
@@ -279,6 +285,18 @@ class ScrcpyClient @Inject constructor(
     fun getControlWriter(): ControlMessageWriter? = controlWriter
 
     fun getDeviceInfo(): DeviceInfo? = deviceInfo
+
+    fun getLastOptions(): ScrcpyOptions? = lastOptions
+
+    suspend fun unlockDevice(password: String? = null) = withContext(Dispatchers.IO) {
+        try {
+            val cmd = ScrcpyOptions.buildUnlockCommand(password ?: lastOptions?.devicePassword)
+            adbConnectionManager.currentDadb?.shell(cmd)
+            android.util.Log.d(TAG, "Manually triggered unlock on device")
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "Failed unlockDevice: ${e.message}")
+        }
+    }
 
     suspend fun disconnect() = withContext(Dispatchers.IO) {
         disconnectInternal()

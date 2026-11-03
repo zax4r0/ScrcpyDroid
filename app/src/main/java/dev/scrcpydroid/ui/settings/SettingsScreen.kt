@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -24,15 +25,19 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MovieFilter
 import androidx.compose.material.icons.filled.SlowMotionVideo
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -44,6 +49,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -61,6 +67,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -73,6 +82,7 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
+    var showPasswordDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -512,6 +522,51 @@ fun SettingsScreen(
                         modifier = Modifier.clickable { viewModel.setClipboardSync(!uiState.clipboardSync) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                     )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    // Auto-Unlock on Connect/Reconnect
+                    ListItem(
+                        headlineContent = { Text("Auto-Unlock on Connect") },
+                        supportingContent = { Text("Automatically wake and unlock remote phone when connecting or reconnecting") },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Default.LockOpen,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = uiState.autoUnlockOnConnect,
+                                onCheckedChange = { viewModel.setAutoUnlockOnConnect(it) }
+                            )
+                        },
+                        modifier = Modifier.clickable { viewModel.setAutoUnlockOnConnect(!uiState.autoUnlockOnConnect) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    // Remote Password / PIN
+                    ListItem(
+                        headlineContent = { Text("Remote Device Password / PIN") },
+                        supportingContent = {
+                            Text(
+                                if (uiState.devicePassword.isNotEmpty()) "•••••••• (Password configured)"
+                                else "Not configured (swipe/no password only)"
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        modifier = Modifier.clickable { showPasswordDialog = true },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
                 }
             }
 
@@ -599,6 +654,70 @@ fun SettingsScreen(
                 dismissButton = {
                     TextButton(onClick = { viewModel.clearUpdateResult() }) {
                         Text("Later")
+                    }
+                }
+            )
+        }
+
+        if (showPasswordDialog) {
+            var passwordInput by remember(uiState.devicePassword) { mutableStateOf(uiState.devicePassword) }
+            var passwordVisible by remember { mutableStateOf(false) }
+
+            AlertDialog(
+                onDismissRequest = { showPasswordDialog = false },
+                title = { Text("Remote Device Password / PIN", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column {
+                        Text(
+                            "Enter the PIN or password used to unlock your remote device. It will be sent via ADB when connecting or auto-reconnecting.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = passwordInput,
+                            onValueChange = { passwordInput = it },
+                            label = { Text("PIN / Password") },
+                            singleLine = true,
+                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            trailingIcon = {
+                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                    Icon(
+                                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                        contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.setDevicePassword(passwordInput)
+                            showPasswordDialog = false
+                        }
+                    ) {
+                        Text("Save", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    Row {
+                        if (uiState.devicePassword.isNotEmpty()) {
+                            TextButton(
+                                onClick = {
+                                    viewModel.setDevicePassword("")
+                                    showPasswordDialog = false
+                                }
+                            ) {
+                                Text("Clear", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        TextButton(onClick = { showPasswordDialog = false }) {
+                            Text("Cancel")
+                        }
                     }
                 }
             )

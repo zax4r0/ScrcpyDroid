@@ -35,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.PushPin
@@ -452,6 +453,22 @@ fun MirrorScreen(
                     Icon(
                         imageVector = Icons.Default.ScreenRotation,
                         contentDescription = "Rotate",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Unlock Device
+                FilledIconButton(
+                    onClick = { viewModel.unlockDevice() },
+                    modifier = Modifier.size(42.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LockOpen,
+                        contentDescription = "Unlock Device",
                         modifier = Modifier.size(20.dp)
                     )
                 }

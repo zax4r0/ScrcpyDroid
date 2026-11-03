@@ -360,6 +360,18 @@ class MirrorViewModel @Inject constructor(
         _uiState.update { it.copy(showControls = show) }
     }
 
+    fun unlockDevice() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val options = settingsRepository.getOptions().first()
+                scrcpyClient.unlockDevice(options.devicePassword)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed manual unlockDevice", e)
+                handleConnectionFailure(e)
+            }
+        }
+    }
+
     fun onAppResumed() {
         clipboardSyncManager.onResumeOrFocus()
         val currentState = scrcpyClient.state.value
@@ -368,6 +380,16 @@ class MirrorViewModel @Inject constructor(
             autoReconnect()
         } else {
             resetVideo()
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val options = settingsRepository.getOptions().first()
+                    if (options.autoUnlockOnConnect) {
+                        scrcpyClient.unlockDevice(options.devicePassword)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed resume unlock: ${e.message}")
+                }
+            }
         }
     }
 

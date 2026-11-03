@@ -16,11 +16,24 @@ data class ScrcpyOptions(
     val lockOnDisconnect: Boolean = true,
     val turnScreenOffOnConnect: Boolean = false,
     val autoWakeOnConnect: Boolean = true,
-    val clipboardSync: Boolean = true
+    val clipboardSync: Boolean = true,
+    val autoUnlockOnConnect: Boolean = true,
+    val devicePassword: String = ""
 ) {
     companion object {
         const val SCRCPY_VERSION = "3.1"
         const val SERVER_PATH = "/data/local/tmp/scrcpy-server.jar"
+
+        fun buildUnlockCommand(password: String?): String {
+            val wakeAndBouncer = "input keyevent 224 ; sleep 0.15 ; wm dismiss-keyguard ; sleep 0.15 ; input keyevent 82 ; sleep 0.2 ; input swipe 500 1600 500 600 150"
+            val pwd = password?.trim()
+            return if (pwd.isNullOrEmpty()) {
+                wakeAndBouncer
+            } else {
+                val escaped = pwd.replace(" ", "%s").replace("'", "'\\''")
+                "$wakeAndBouncer ; sleep 0.25 ; input text '$escaped' ; sleep 0.15 ; input keyevent 66"
+            }
+        }
     }
 
     fun toServerArgs(): String = buildString {

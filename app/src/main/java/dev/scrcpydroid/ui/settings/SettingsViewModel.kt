@@ -28,6 +28,8 @@ data class SettingsUiState(
     val turnScreenOffOnConnect: Boolean = false,
     val autoWakeOnConnect: Boolean = true,
     val clipboardSync: Boolean = true,
+    val autoUnlockOnConnect: Boolean = true,
+    val devicePassword: String = "",
     val otaRepo: String = "zax4r0/ScrcpyDroid",
     val appVersion: String = "1.0.0",
     val updateResult: UpdateCheckResult = UpdateCheckResult.Idle,
@@ -62,7 +64,9 @@ class SettingsViewModel @Inject constructor(
                         lockOnDisconnect = options.lockOnDisconnect,
                         turnScreenOffOnConnect = options.turnScreenOffOnConnect,
                         autoWakeOnConnect = options.autoWakeOnConnect,
-                        clipboardSync = options.clipboardSync
+                        clipboardSync = options.clipboardSync,
+                        autoUnlockOnConnect = options.autoUnlockOnConnect,
+                        devicePassword = options.devicePassword
                     )
                 }
             }
@@ -150,6 +154,18 @@ class SettingsViewModel @Inject constructor(
     fun setClipboardSync(sync: Boolean) {
         viewModelScope.launch {
             settingsRepository.updateClipboardSync(sync)
+        }
+    }
+
+    fun setAutoUnlockOnConnect(autoUnlock: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateAutoUnlockOnConnect(autoUnlock)
+        }
+    }
+
+    fun setDevicePassword(password: String) {
+        viewModelScope.launch {
+            settingsRepository.updateDevicePassword(password)
         }
     }
 
