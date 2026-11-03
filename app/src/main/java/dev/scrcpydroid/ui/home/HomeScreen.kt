@@ -34,9 +34,11 @@ import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
@@ -49,31 +51,38 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MediumTopAppBar
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -86,6 +95,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -102,9 +112,7 @@ import dev.scrcpydroid.data.model.DeviceConnection
 import dev.scrcpydroid.data.model.DeviceSettings
 import dev.scrcpydroid.ui.settings.SettingsContent
 import dev.scrcpydroid.ui.settings.resolutionToLabel
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.io.File
 
 enum class HomeTab(val label: String, val icon: ImageVector) {
     CONNECT("Connect", Icons.Default.Cast),
@@ -126,6 +134,8 @@ fun HomeScreen(
 
     var renamingDevice by remember { mutableStateOf<DeviceConnection?>(null) }
     var deviceSettingsTarget by remember { mutableStateOf<DeviceConnection?>(null) }
+
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     LaunchedEffect(Unit) {
         viewModel.navigationEvent.collect { event ->
@@ -152,56 +162,64 @@ fun HomeScreen(
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
+            MediumTopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = when (currentTab) {
-                                HomeTab.CONNECT -> Icons.Default.Cast
-                                HomeTab.DEVICES -> Icons.Default.Devices
-                                HomeTab.SETTINGS -> Icons.Default.Settings
-                            },
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(26.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
+                    Column {
                         Text(
                             text = when (currentTab) {
                                 HomeTab.CONNECT -> "ScrcpyDroid"
-                                HomeTab.DEVICES -> "Devices (${uiState.recentConnections.size})"
+                                HomeTab.DEVICES -> "Saved Devices"
                                 HomeTab.SETTINGS -> "Settings"
                             },
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold
                         )
-                    }
-                },
-                actions = {
-                    if (currentTab != HomeTab.SETTINGS) {
-                        IconButton(
-                            onClick = {
-                                if (uiState.isScanning) viewModel.stopDiscovery() else viewModel.startDiscovery()
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Scan mDNS",
-                                tint = if (uiState.isScanning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        if (currentTab == HomeTab.CONNECT) {
+                            Text(
+                                text = "High-performance Android wireless mirror",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (currentTab == HomeTab.DEVICES) {
+                            Text(
+                                text = "${uiState.recentConnections.size} configured ${if (uiState.recentConnections.size == 1) "device" else "devices"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                actions = {
+                    if (currentTab != HomeTab.SETTINGS) {
+                        FilledTonalIconButton(
+                            onClick = {
+                                if (uiState.isScanning) viewModel.stopDiscovery() else viewModel.startDiscovery()
+                            },
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = if (uiState.isScanning) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Scan mDNS",
+                                tint = if (uiState.isScanning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.mediumTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                ),
+                scrollBehavior = scrollBehavior
             )
         },
         bottomBar = {
             NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                tonalElevation = 3.dp
+                tonalElevation = 2.dp
             ) {
                 HomeTab.entries.forEach { tab ->
                     val isSelected = currentTab == tab
@@ -211,7 +229,12 @@ fun HomeScreen(
                         icon = {
                             if (tab == HomeTab.DEVICES && uiState.recentConnections.isNotEmpty()) {
                                 BadgedBox(badge = {
-                                    Badge { Text(uiState.recentConnections.size.toString()) }
+                                    Badge(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    ) {
+                                        Text(uiState.recentConnections.size.toString())
+                                    }
                                 }) {
                                     Icon(tab.icon, contentDescription = tab.label)
                                 }
@@ -219,12 +242,18 @@ fun HomeScreen(
                                 Icon(tab.icon, contentDescription = tab.label)
                             }
                         },
-                        label = { Text(tab.label) }
+                        label = {
+                            Text(
+                                tab.label,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        }
                     )
                 }
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.surface
     ) { innerPadding ->
         when (currentTab) {
             HomeTab.CONNECT -> {
@@ -232,8 +261,8 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     // 1. OTA Update Banner (if available)
                     if (uiState.updateResult is UpdateCheckResult.Available) {
@@ -248,31 +277,56 @@ fun HomeScreen(
                         }
                     }
 
-                    // 2. Wireless Debugging Connection Card
+                    // 2. Google-Style Direct Connection Card
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(28.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                             )
                         ) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    .padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Text(
-                                    text = "Direct Connection",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primaryContainer),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lan,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "Wireless Debugging",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Connect to device IP & wireless port",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     OutlinedTextField(
                                         value = uiState.ipAddress,
@@ -280,6 +334,11 @@ fun HomeScreen(
                                         label = { Text("IP Address") },
                                         placeholder = { Text("192.168.1.x") },
                                         singleLine = true,
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                                        ),
                                         keyboardOptions = KeyboardOptions(
                                             keyboardType = KeyboardType.Decimal,
                                             imeAction = ImeAction.Next
@@ -293,6 +352,11 @@ fun HomeScreen(
                                         label = { Text("Port") },
                                         placeholder = { Text("5555") },
                                         singleLine = true,
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                                        ),
                                         keyboardOptions = KeyboardOptions(
                                             keyboardType = KeyboardType.Number,
                                             imeAction = ImeAction.Done
@@ -309,41 +373,51 @@ fun HomeScreen(
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    FilledTonalButton(
+                                    Button(
                                         onClick = {
                                             focusManager.clearFocus()
                                             viewModel.onConnect()
                                         },
                                         enabled = !uiState.isConnecting,
                                         modifier = Modifier
-                                            .weight(1f)
-                                            .height(48.dp),
-                                        shape = RoundedCornerShape(12.dp)
+                                            .weight(1.3f)
+                                            .height(52.dp),
+                                        shape = RoundedCornerShape(26.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        )
                                     ) {
                                         if (uiState.isConnecting) {
                                             CircularProgressIndicator(
-                                                modifier = Modifier.size(20.dp),
-                                                strokeWidth = 2.dp
+                                                modifier = Modifier.size(22.dp),
+                                                strokeWidth = 2.5.dp,
+                                                color = MaterialTheme.colorScheme.onPrimary
                                             )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Connecting...")
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text("Connecting...", fontWeight = FontWeight.SemiBold)
                                         } else {
                                             Icon(
                                                 imageVector = Icons.Default.PlayArrow,
                                                 contentDescription = null,
-                                                modifier = Modifier.size(20.dp)
+                                                modifier = Modifier.size(22.dp)
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Connect")
+                                            Text("Connect", fontWeight = FontWeight.Bold)
                                         }
                                     }
 
-                                    OutlinedButton(
+                                    FilledTonalButton(
                                         onClick = { viewModel.openPairingDialog() },
-                                        modifier = Modifier.height(48.dp),
-                                        shape = RoundedCornerShape(12.dp)
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(52.dp),
+                                        shape = RoundedCornerShape(26.dp),
+                                        colors = ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                                        )
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Link,
@@ -351,44 +425,59 @@ fun HomeScreen(
                                             modifier = Modifier.size(20.dp)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Pair Code")
+                                        Text("Pair Code", fontWeight = FontWeight.SemiBold)
                                     }
                                 }
                             }
                         }
                     }
 
-                    // 3. mDNS Discovered Devices
+                    // 3. Nearby Devices (mDNS) Section
                     item {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.WifiTethering,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
+                                Text(
+                                    text = "Nearby Devices",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Nearby Devices (mDNS)",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                if (uiState.isScanning) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        modifier = Modifier.padding(horizontal = 4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(10.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Searching",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                }
                             }
 
-                            if (uiState.isScanning) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Scanning...",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                            if (!uiState.isScanning) {
+                                TextButton(onClick = { viewModel.startDiscovery() }) {
+                                    Text("Scan", fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -399,16 +488,37 @@ fun HomeScreen(
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
                                 ),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(24.dp)
                             ) {
-                                Text(
-                                    text = "No wireless devices detected on your Wi-Fi yet.\nEnable 'Wireless Debugging' in Developer Options on your other phone to discover it automatically.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(14.dp)
-                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(18.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.WifiTethering,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "Ensure 'Wireless Debugging' is switched ON in Developer Options on your target phone.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     } else {
@@ -420,24 +530,23 @@ fun HomeScreen(
                         }
                     }
 
-                    // Quick prompt to check saved devices
+                    // 4. Quick Saved Devices section
                     if (uiState.recentConnections.isNotEmpty()) {
                         item {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { currentTab = HomeTab.DEVICES }
-                                    .padding(vertical = 4.dp),
+                                    .padding(horizontal = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = "Saved Devices (${uiState.recentConnections.size})",
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.Bold
                                 )
                                 TextButton(onClick = { currentTab = HomeTab.DEVICES }) {
-                                    Text("View All")
+                                    Text("View All", fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -452,6 +561,10 @@ fun HomeScreen(
                             )
                         }
                     }
+
+                    item {
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
                 }
             }
 
@@ -460,47 +573,58 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     if (uiState.recentConnections.isEmpty()) {
                         item {
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 24.dp),
+                                    .padding(top = 40.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                                 ),
-                                shape = RoundedCornerShape(16.dp)
+                                shape = RoundedCornerShape(28.dp)
                             ) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(24.dp),
+                                        .padding(32.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Devices,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(48.dp)
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(72.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primaryContainer),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Devices,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                    }
                                     Text(
                                         text = "No Saved Devices",
-                                        style = MaterialTheme.typography.titleMedium,
+                                        style = MaterialTheme.typography.titleLarge,
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        text = "Connect to a device via the Connect tab to save it here. Each saved device can have custom nicknames and individual resolution, FPS, unlock credentials, and connection settings!",
+                                        text = "Devices you connect to will appear here. ScrcpyDroid tracks each device by persistent ID so IP and port changes never create duplicates.",
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                     )
-                                    FilledTonalButton(
-                                        onClick = { currentTab = HomeTab.CONNECT }
+                                    Button(
+                                        onClick = { currentTab = HomeTab.CONNECT },
+                                        shape = RoundedCornerShape(20.dp),
+                                        modifier = Modifier.padding(top = 8.dp)
                                     ) {
-                                        Text("Go to Connect Tab")
+                                        Text("Go to Connect")
                                     }
                                 }
                             }
@@ -508,9 +632,10 @@ fun HomeScreen(
                     } else {
                         item {
                             Text(
-                                text = "Tap any device to connect. Tap the pencil to rename, or the sliders icon to customize per-device settings.",
+                                text = "Tap any device card to connect instantly. Tap sliders to tune resolution, FPS, or unlock credentials.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 4.dp)
                             )
                         }
 
@@ -525,6 +650,10 @@ fun HomeScreen(
                                 onConfigureSettings = { deviceSettingsTarget = connection },
                                 onDelete = { viewModel.onDeleteConnection(connection) }
                             )
+                        }
+
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
                 }
@@ -584,20 +713,23 @@ fun SavedDeviceCard(
     onConfigureSettings: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val hasCustom = connection.customSettings?.useGlobalSettings == false
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
             .clickable(onClick = onConnect),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -610,20 +742,20 @@ fun SavedDeviceCard(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(46.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                            .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.PhoneAndroid,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
 
                     Column {
                         Text(
@@ -631,6 +763,7 @@ fun SavedDeviceCard(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "${connection.host}:${connection.port}" +
                                 if (connection.deviceName.isNotBlank() && connection.deviceName != connection.displayName) " • ${connection.deviceName}" else "",
@@ -642,14 +775,18 @@ fun SavedDeviceCard(
 
                 FilledTonalButton(
                     onClick = onConnect,
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    modifier = Modifier.height(38.dp)
                 ) {
-                    Text("Connect")
+                    Text("Connect", fontWeight = FontWeight.Bold)
                 }
             }
 
-            // Custom settings chip if enabled
-            val hasCustom = connection.customSettings?.useGlobalSettings == false
+            // Custom settings chip or status badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -663,7 +800,12 @@ fun SavedDeviceCard(
                     if (settings.autoUnlock == true) parts.add("Auto-Unlock")
                     AssistChip(
                         onClick = onConfigureSettings,
-                        label = { Text("Custom: ${if (parts.isNotEmpty()) parts.joinToString(" • ") else "Configured"}") },
+                        label = {
+                            Text(
+                                "Profile: ${if (parts.isNotEmpty()) parts.joinToString(" • ") else "Custom"}",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Tune,
@@ -673,22 +815,32 @@ fun SavedDeviceCard(
                             )
                         },
                         colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                             labelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                        ),
+                        shape = RoundedCornerShape(12.dp)
                     )
                 } else {
-                    Text(
-                        text = "Using global settings",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer
+                    ) {
+                        Text(
+                            text = "Global profile",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    IconButton(
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilledTonalIconButton(
                         onClick = onRename,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(36.dp),
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                        )
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
@@ -698,9 +850,12 @@ fun SavedDeviceCard(
                         )
                     }
 
-                    IconButton(
+                    FilledTonalIconButton(
                         onClick = onConfigureSettings,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(36.dp),
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = if (hasCustom) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer
+                        )
                     ) {
                         Icon(
                             imageVector = Icons.Default.Tune,
@@ -710,18 +865,109 @@ fun SavedDeviceCard(
                         )
                     }
 
-                    IconButton(
+                    FilledTonalIconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(34.dp)
+                        modifier = Modifier.size(36.dp),
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                        )
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Delete",
-                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                            tint = MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(18.dp)
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun DiscoveredDeviceCard(
+    device: DiscoveredDevice,
+    onConnect: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onConnect),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (device.isPairing) {
+                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            }
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (device.isPairing) MaterialTheme.colorScheme.tertiaryContainer
+                            else MaterialTheme.colorScheme.secondaryContainer
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (device.isPairing) Icons.Default.Link else Icons.Default.PhoneAndroid,
+                        contentDescription = null,
+                        tint = if (device.isPairing) MaterialTheme.colorScheme.onTertiaryContainer
+                        else MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column {
+                    Text(
+                        text = device.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${device.host}:${device.port}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (device.isPairing) {
+                        Text(
+                            text = "Pairing service available",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            FilledTonalButton(
+                onClick = onConnect,
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.height(38.dp)
+            ) {
+                Text(
+                    text = if (device.isPairing) "Pair" else "Connect",
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }
@@ -737,12 +983,20 @@ fun RenameDeviceDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename Device", fontWeight = FontWeight.Bold) },
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        title = {
+            Text(
+                "Rename Device",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     "Set a friendly nickname for this device (e.g. 'Living Room TV', 'POCO F4 Gaming'):",
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 OutlinedTextField(
@@ -751,22 +1005,28 @@ fun RenameDeviceDialog(
                     label = { Text("Device Nickname") },
                     placeholder = { Text(connection.deviceName.ifBlank { "${connection.host}:${connection.port}" }) },
                     singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         },
         confirmButton = {
-            TextButton(
+            Button(
                 onClick = {
                     onSave(nameInput)
                     onDismiss()
-                }
+                },
+                shape = RoundedCornerShape(20.dp)
             ) {
                 Text("Save", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            Row {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (connection.customName.isNotBlank()) {
                     TextButton(
                         onClick = {
@@ -806,13 +1066,16 @@ fun DeviceSettingsDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         title = {
             Column {
                 Text(
-                    text = "Settings: ${connection.displayName}",
+                    text = connection.displayName,
                     fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleLarge
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "${connection.host}:${connection.port}",
                     style = MaterialTheme.typography.bodySmall,
@@ -825,34 +1088,40 @@ fun DeviceSettingsDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 // Switch: Use Custom Settings for this Device
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { useCustom = !useCustom }
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Custom Settings", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            text = if (useCustom) "Override global settings for this device" else "Using global settings",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { useCustom = !useCustom }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Custom Profile", fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (useCustom) "Dedicated settings for this device" else "Using global settings",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = useCustom,
+                            onCheckedChange = { useCustom = it }
                         )
                     }
-                    Switch(
-                        checked = useCustom,
-                        onCheckedChange = { useCustom = it }
-                    )
                 }
 
                 if (useCustom) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-
                     // Resolution
                     var resExpanded by remember { mutableStateOf(false) }
                     Row(
@@ -860,9 +1129,12 @@ fun DeviceSettingsDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Resolution", style = MaterialTheme.typography.bodyMedium)
+                        Text("Resolution", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Box {
-                            TextButton(onClick = { resExpanded = true }) {
+                            FilledTonalButton(
+                                onClick = { resExpanded = true },
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
                                 Text(resolutionToLabel(maxSize), fontWeight = FontWeight.SemiBold)
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                             }
@@ -890,9 +1162,12 @@ fun DeviceSettingsDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Max FPS", style = MaterialTheme.typography.bodyMedium)
+                        Text("Max FPS", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Box {
-                            TextButton(onClick = { fpsExpanded = true }) {
+                            FilledTonalButton(
+                                onClick = { fpsExpanded = true },
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
                                 Text("$maxFps FPS", fontWeight = FontWeight.SemiBold)
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                             }
@@ -919,7 +1194,7 @@ fun DeviceSettingsDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Video Bitrate", style = MaterialTheme.typography.bodyMedium)
+                            Text("Video Bitrate", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                             Text(
                                 "${videoBitRate / 1_000_000} Mbps",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -942,9 +1217,12 @@ fun DeviceSettingsDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Codec", style = MaterialTheme.typography.bodyMedium)
+                        Text("Video Codec", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Box {
-                            TextButton(onClick = { codecExpanded = true }) {
+                            FilledTonalButton(
+                                onClick = { codecExpanded = true },
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
                                 Text(if (videoCodec == "h265") "H.265 (HEVC)" else "H.264 (AVC)", fontWeight = FontWeight.SemiBold)
                                 Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                             }
@@ -970,7 +1248,7 @@ fun DeviceSettingsDialog(
                         }
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
                     // Auto-Unlock for this device
                     Row(
@@ -981,7 +1259,10 @@ fun DeviceSettingsDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Auto-Unlock on Connect", style = MaterialTheme.typography.bodyMedium)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Auto-Unlock", fontWeight = FontWeight.Medium)
+                            Text("Unlock screen automatically on connect", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         Switch(checked = autoUnlock, onCheckedChange = { autoUnlock = it })
                     }
 
@@ -991,6 +1272,11 @@ fun DeviceSettingsDialog(
                         onValueChange = { devicePassword = it },
                         label = { Text("Device Password / PIN") },
                         singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                        ),
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         trailingIcon = {
@@ -1013,7 +1299,7 @@ fun DeviceSettingsDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Forward Audio", style = MaterialTheme.typography.bodyMedium)
+                        Text("Forward Audio", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Switch(checked = audioEnabled, onCheckedChange = { audioEnabled = it })
                     }
 
@@ -1026,7 +1312,7 @@ fun DeviceSettingsDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Turn Screen Off on Connect", style = MaterialTheme.typography.bodyMedium)
+                        Text("Screen Off on Connect", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Switch(checked = turnScreenOffOnConnect, onCheckedChange = { turnScreenOffOnConnect = it })
                     }
 
@@ -1039,14 +1325,14 @@ fun DeviceSettingsDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Keep Remote Awake", style = MaterialTheme.typography.bodyMedium)
+                        Text("Keep Remote Awake", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                         Switch(checked = stayAwake, onCheckedChange = { stayAwake = it })
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(
+            Button(
                 onClick = {
                     val settings = DeviceSettings(
                         useGlobalSettings = !useCustom,
@@ -1062,13 +1348,14 @@ fun DeviceSettingsDialog(
                     )
                     onSave(settings)
                     onDismiss()
-                }
+                },
+                shape = RoundedCornerShape(20.dp)
             ) {
                 Text("Save", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            Row {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (useCustom) {
                     TextButton(
                         onClick = {
@@ -1088,86 +1375,6 @@ fun DeviceSettingsDialog(
 }
 
 @Composable
-fun DiscoveredDeviceCard(
-    device: DiscoveredDevice,
-    onConnect: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onConnect),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (device.isPairing) {
-                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            }
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (device.isPairing) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
-                            else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (device.isPairing) Icons.Default.Link else Icons.Default.PhoneAndroid,
-                        contentDescription = null,
-                        tint = if (device.isPairing) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column {
-                    Text(
-                        text = device.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "${device.host}:${device.port}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (device.isPairing) {
-                        Text(
-                            text = "Ready to pair",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary
-                        )
-                    }
-                }
-            }
-
-            FilledTonalButton(
-                onClick = onConnect,
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text(if (device.isPairing) "Pair" else "Connect")
-            }
-        }
-    }
-}
-
-@Composable
 fun WirelessPairingDialog(
     host: String,
     port: String,
@@ -1181,15 +1388,30 @@ fun WirelessPairingDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(imageVector = Icons.Default.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Wireless Debugging Pairing")
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Link,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Wireless Pairing", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = "On target device, open Settings > Developer Options > Wireless Debugging > 'Pair device with pairing code'.",
                     style = MaterialTheme.typography.bodySmall,
@@ -1201,6 +1423,11 @@ fun WirelessPairingDialog(
                     onValueChange = onHostChange,
                     label = { Text("IP Address") },
                     singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1208,8 +1435,13 @@ fun WirelessPairingDialog(
                 OutlinedTextField(
                     value = port,
                     onValueChange = onPortChange,
-                    label = { Text("Pairing Port (from pairing dialog)") },
+                    label = { Text("Pairing Port (from dialog)") },
                     singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1219,6 +1451,11 @@ fun WirelessPairingDialog(
                     onValueChange = onCodeChange,
                     label = { Text("6-Digit Pairing Code") },
                     singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1227,8 +1464,8 @@ fun WirelessPairingDialog(
                     is PairingStatus.Pairing -> {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Pairing...", style = MaterialTheme.typography.bodySmall)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Pairing with device...", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                     is PairingStatus.Success -> {
@@ -1253,9 +1490,10 @@ fun WirelessPairingDialog(
         confirmButton = {
             Button(
                 onClick = onPair,
-                enabled = status !is PairingStatus.Pairing && host.isNotBlank() && port.isNotBlank() && code.isNotBlank()
+                enabled = status !is PairingStatus.Pairing && host.isNotBlank() && port.isNotBlank() && code.isNotBlank(),
+                shape = RoundedCornerShape(20.dp)
             ) {
-                Text("Pair")
+                Text("Pair", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -1275,7 +1513,7 @@ fun OtaUpdateBanner(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer
         )
@@ -1283,8 +1521,8 @@ fun OtaUpdateBanner(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1292,13 +1530,21 @@ fun OtaUpdateBanner(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = "Update Available: ${info.versionName}",
                         style = MaterialTheme.typography.titleMedium,
@@ -1306,12 +1552,12 @@ fun OtaUpdateBanner(
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
-                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Dismiss",
                         tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -1320,7 +1566,7 @@ fun OtaUpdateBanner(
                 Text(
                     text = info.releaseNotes.take(150) + if (info.releaseNotes.length > 150) "..." else "",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
                 )
             }
 
@@ -1342,8 +1588,8 @@ fun OtaUpdateBanner(
                     Text(
                         text = "Download complete. Tap to install.",
                         style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
                 is DownloadProgress.Failed -> {
@@ -1354,11 +1600,15 @@ fun OtaUpdateBanner(
                     )
                 }
                 else -> {
-                    FilledTonalButton(
+                    Button(
                         onClick = onDownload,
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
                     ) {
-                        Text("Download & Install")
+                        Text("Download & Install", fontWeight = FontWeight.Bold)
                     }
                 }
             }

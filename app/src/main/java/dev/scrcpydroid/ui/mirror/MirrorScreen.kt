@@ -44,8 +44,10 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -246,247 +248,269 @@ fun MirrorScreen(
 
         // Tap trigger to show controls when hidden
         if (!uiState.showControls) {
-            Box(
+            FilledTonalIconButton(
+                onClick = { viewModel.setShowControls(true) },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
-                    .padding(16.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { viewModel.setShowControls(true) }
-                    )
-                    .padding(10.dp)
+                    .padding(20.dp)
+                    .size(46.dp),
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.88f),
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
             ) {
                 Icon(
                     imageVector = Icons.Default.Tune,
                     contentDescription = "Show Controls",
-                    tint = Color.White.copy(alpha = 0.8f),
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
 
-        // Top Status Bar (semi-transparent)
+        // Top Status Bar (Google Floating Pill)
         AnimatedVisibility(
             visible = uiState.showControls,
             enter = fadeIn() + slideInVertically { -it },
             exit = fadeOut() + slideOutVertically { -it },
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
-            Row(
+            Surface(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.65f))
                     .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(top = 12.dp, start = 16.dp, end = 16.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.90f),
+                tonalElevation = 6.dp
             ) {
-                Text(
-                    text = uiState.deviceInfo?.name?.ifBlank { "Android Device" } ?: "Android Device",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = uiState.deviceInfo?.name?.ifBlank { "Android Device" } ?: "Android Device",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold
+                    )
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "${remoteWidth}x${remoteHeight}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "${uiState.fps} FPS",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainer
+                        ) {
+                            Text(
+                                text = "${remoteWidth}x${remoteHeight}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = "${uiState.fps} FPS",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        // Bottom Floating Action Buttons
+        // Bottom Floating Action Buttons (Google Camera / Media Pill Style)
         AnimatedVisibility(
             visible = uiState.showControls,
             enter = fadeIn() + slideInVertically { it },
             exit = fadeOut() + slideOutVertically { it },
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            Row(
+            Surface(
                 modifier = Modifier
                     .navigationBarsPadding()
-                    .padding(bottom = 24.dp)
-                    .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    .horizontalScroll(menuScrollState)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(bottom = 24.dp, start = 16.dp, end = 16.dp),
+                shape = RoundedCornerShape(32.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.92f),
+                tonalElevation = 8.dp
             ) {
-                // Back
-                FilledIconButton(
-                    onClick = { viewModel.pressBack() },
-                    modifier = Modifier.size(42.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(
+                    modifier = Modifier
+                        .horizontalScroll(menuScrollState)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                    // Back
+                    FilledIconButton(
+                        onClick = { viewModel.pressBack() },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-                // Home
-                FilledIconButton(
-                    onClick = { viewModel.pressHome() },
-                    modifier = Modifier.size(42.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Home,
-                        contentDescription = "Home",
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                    // Home
+                    FilledIconButton(
+                        onClick = { viewModel.pressHome() },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Home,
+                            contentDescription = "Home",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-                // App Switch
-                FilledIconButton(
-                    onClick = { viewModel.pressAppSwitch() },
-                    modifier = Modifier.size(42.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Apps,
-                        contentDescription = "App Switch",
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                    // App Switch
+                    FilledIconButton(
+                        onClick = { viewModel.pressAppSwitch() },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Apps,
+                            contentDescription = "App Switch",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-                // Notifications
-                FilledIconButton(
-                    onClick = { viewModel.expandNotificationPanel() },
-                    modifier = Modifier.size(42.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Notifications,
-                        contentDescription = "Notifications",
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                    // Notifications
+                    FilledIconButton(
+                        onClick = { viewModel.expandNotificationPanel() },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Notifications",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-                // Pin / Unpin (App Pinning to block status bar)
-                FilledIconButton(
-                    onClick = {
-                        val currentlyPinned = activityManager?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
-                        if (currentlyPinned) {
-                            try {
-                                activity?.stopLockTask()
-                                isPinned = false
-                            } catch (e: Exception) {
-                                android.util.Log.w("MirrorScreen", "stopLockTask failed", e)
+                    // Pin / Unpin
+                    FilledIconButton(
+                        onClick = {
+                            val currentlyPinned = activityManager?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+                            if (currentlyPinned) {
+                                try {
+                                    activity?.stopLockTask()
+                                    isPinned = false
+                                } catch (e: Exception) {
+                                    android.util.Log.w("MirrorScreen", "stopLockTask failed", e)
+                                }
+                            } else {
+                                try {
+                                    activity?.startLockTask()
+                                    isPinned = true
+                                } catch (e: Exception) {
+                                    android.util.Log.w("MirrorScreen", "startLockTask failed", e)
+                                }
                             }
-                        } else {
-                            try {
-                                activity?.startLockTask()
-                                isPinned = true
-                            } catch (e: Exception) {
-                                android.util.Log.w("MirrorScreen", "startLockTask failed", e)
-                            }
-                        }
-                    },
-                    modifier = Modifier.size(42.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (isPinned) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PushPin,
-                        contentDescription = if (isPinned) "Unpin App" else "Pin App",
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                        },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = if (isPinned) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = if (isPinned) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = if (isPinned) "Unpin App" else "Pin App",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-                // Remote Screen On/Off (Display Power)
-                FilledIconButton(
-                    onClick = { viewModel.toggleDisplayPower() },
-                    modifier = Modifier.size(42.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = if (!uiState.isDisplayPowerOn) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (!uiState.isDisplayPowerOn) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Icon(
-                        imageVector = if (uiState.isDisplayPowerOn) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = if (uiState.isDisplayPowerOn) "Turn Remote Screen Off" else "Turn Remote Screen On",
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                    // Remote Screen On/Off (Display Power)
+                    FilledIconButton(
+                        onClick = { viewModel.toggleDisplayPower() },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = if (!uiState.isDisplayPowerOn) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = if (!uiState.isDisplayPowerOn) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = if (uiState.isDisplayPowerOn) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = if (uiState.isDisplayPowerOn) "Turn Remote Screen Off" else "Turn Remote Screen On",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-                // Rotate
-                FilledIconButton(
-                    onClick = { viewModel.rotateDevice() },
-                    modifier = Modifier.size(42.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ScreenRotation,
-                        contentDescription = "Rotate",
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                    // Rotate
+                    FilledIconButton(
+                        onClick = { viewModel.rotateDevice() },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ScreenRotation,
+                            contentDescription = "Rotate",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-                // Unlock Device
-                FilledIconButton(
-                    onClick = { viewModel.unlockDevice() },
-                    modifier = Modifier.size(42.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.LockOpen,
-                        contentDescription = "Unlock Device",
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                    // Unlock Device
+                    FilledIconButton(
+                        onClick = { viewModel.unlockDevice() },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LockOpen,
+                            contentDescription = "Unlock Device",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
-                // Disconnect
-                FilledIconButton(
-                    onClick = { showDisconnectDialog = true },
-                    modifier = Modifier.size(42.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PowerSettingsNew,
-                        contentDescription = "Disconnect",
-                        modifier = Modifier.size(20.dp)
-                    )
+                    // Disconnect
+                    FilledIconButton(
+                        onClick = { showDisconnectDialog = true },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PowerSettingsNew,
+                            contentDescription = "Disconnect",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
@@ -499,12 +523,12 @@ fun MirrorScreen(
                     .statusBarsPadding()
                     .padding(top = 16.dp)
                     .clickable { viewModel.autoReconnect() },
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.95f),
                 tonalElevation = 6.dp
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CircularProgressIndicator(
@@ -512,11 +536,12 @@ fun MirrorScreen(
                         strokeWidth = 2.dp,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = uiState.errorMessage ?: "Reconnecting...",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -526,17 +551,24 @@ fun MirrorScreen(
     if (showDisconnectDialog) {
         AlertDialog(
             onDismissRequest = { showDisconnectDialog = false },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             title = {
                 Text(
                     text = "Disconnect Session",
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
                 )
             },
             text = {
-                Text(text = "Are you sure you want to disconnect from this device?")
+                Text(
+                    text = "Are you sure you want to disconnect from this device?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         showDisconnectDialog = false
                         try {
@@ -546,11 +578,15 @@ fun MirrorScreen(
                         }
                         viewModel.disconnect()
                         onNavigateBack()
-                    }
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
                 ) {
                     Text(
                         text = "Disconnect",
-                        color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold
                     )
                 }
