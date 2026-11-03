@@ -527,7 +527,7 @@ fun SettingsScreen(
                 Column(modifier = Modifier.fillMaxWidth()) {
                     ListItem(
                         headlineContent = { Text("Version") },
-                        supportingContent = { Text("1.0.0 (Scrcpy Protocol v3.1)") },
+                        supportingContent = { Text("${uiState.appVersion} (Scrcpy Protocol v3.1)") },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                     )
 

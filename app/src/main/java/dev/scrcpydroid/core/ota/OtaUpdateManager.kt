@@ -2,11 +2,13 @@ package dev.scrcpydroid.core.ota
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
+import dev.scrcpydroid.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -50,9 +52,21 @@ class OtaUpdateManager @Inject constructor(
 ) {
     companion object {
         private const val TAG = "OtaUpdateManager"
-        const val CURRENT_VERSION = "1.0.0"
         const val DEFAULT_REPO = "zax4r0/ScrcpyDroid"
     }
+
+    val currentVersion: String
+        get() = try {
+            val pInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
+            pInfo.versionName ?: BuildConfig.VERSION_NAME
+        } catch (_: Exception) {
+            BuildConfig.VERSION_NAME
+        }
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -93,7 +107,7 @@ class OtaUpdateManager @Inject constructor(
                 }
             }
 
-            val isNewer = isVersionNewer(cleanVersion, CURRENT_VERSION)
+            val isNewer = isVersionNewer(cleanVersion, currentVersion)
             val finalUrl = apkUrl ?: ""
 
             val info = AppReleaseInfo(
@@ -106,7 +120,7 @@ class OtaUpdateManager @Inject constructor(
             if (isNewer && finalUrl.isNotBlank()) {
                 UpdateCheckResult.Available(info)
             } else {
-                UpdateCheckResult.UpToDate(CURRENT_VERSION)
+                UpdateCheckResult.UpToDate(currentVersion)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Update check failed: ${e.message}", e)
@@ -116,8 +130,8 @@ class OtaUpdateManager @Inject constructor(
 
     private fun isVersionNewer(remote: String, current: String): Boolean {
         try {
-            val remoteParts = remote.split('.').mapNotNull { it.toIntOrNull() }
-            val currentParts = current.split('.').mapNotNull { it.toIntOrNull() }
+            val remoteParts = remote.split('.', '-').mapNotNull { it.toIntOrNull() }
+            val currentParts = current.split('.', '-').mapNotNull { it.toIntOrNull() }
 
             val maxLen = maxOf(remoteParts.size, currentParts.size)
             for (i in 0 until maxLen) {

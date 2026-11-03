@@ -29,6 +29,7 @@ data class SettingsUiState(
     val autoWakeOnConnect: Boolean = true,
     val clipboardSync: Boolean = true,
     val otaRepo: String = "zax4r0/ScrcpyDroid",
+    val appVersion: String = "1.0.0",
     val updateResult: UpdateCheckResult = UpdateCheckResult.Idle,
     val downloadProgress: DownloadProgress? = null
 )
@@ -43,6 +44,8 @@ class SettingsViewModel @Inject constructor(
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
+        _uiState.update { it.copy(appVersion = otaUpdateManager.currentVersion) }
+
         viewModelScope.launch {
             settingsRepository.getOptions().collect { options ->
                 _uiState.update {
