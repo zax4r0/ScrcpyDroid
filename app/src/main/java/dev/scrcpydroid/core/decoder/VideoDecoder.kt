@@ -83,6 +83,13 @@ class VideoDecoder @Inject constructor() {
             }
         }
 
+        synchronized(this) {
+            if (isRunning.get() && currentSurface === surface && codec != null) {
+                Log.d(TAG, "Decoder already running on this surface")
+                return
+            }
+        }
+
         stop()
 
         val gen: Int
@@ -147,6 +154,8 @@ class VideoDecoder @Inject constructor() {
                 }
             }
 
+            var waitingForKeyFrame = true
+
             packetFlow.collect { packet ->
                 if (!isRunning.get()) throw CancellationException("Decoder stopped")
 
@@ -188,6 +197,20 @@ class VideoDecoder @Inject constructor() {
                     }
                 }
 
+                // A newly started MediaCodec cannot decode P-frames without an IDR reference picture.
+                // Drop non-keyframe packets until the first keyframe arrives to prevent buffer lockups.
+                if (waitingForKeyFrame) {
+                    if (packet.isKeyFrame) {
+                        waitingForKeyFrame = false
+                        Log.d(TAG, "Keyframe received, starting regular playback")
+                    } else if (packet.isConfig) {
+                        // SPS/PPS config is always allowed
+                    } else {
+                        // Drop P-frame while awaiting keyframe
+                        return@collect
+                    }
+                }
+
                 val currentCodec = mediaCodec ?: return@collect
                 feedInput(gen, currentCodec, packet)
             }
@@ -206,6 +229,7 @@ class VideoDecoder @Inject constructor() {
     }
 
     private suspend fun feedInput(gen: Int, mediaCodec: MediaCodec, packet: VideoPacket) {
+        var retries = 0
         while (isSessionActive(gen)) {
             try {
                 val inputIndex = mediaCodec.dequeueInputBuffer(DEQUEUE_TIMEOUT_US)
@@ -223,8 +247,13 @@ class VideoDecoder @Inject constructor() {
                         break
                     }
                 } else {
-                    // Decoder input buffers currently full, wait briefly and retry without dropping the packet
-                    delay(1)
+                    retries++
+                    if (retries > 30) {
+                        // After ~300ms of saturated buffers, drop this packet so we don't stall the stream flow
+                        Log.w(TAG, "Input buffers saturated, dropping frame to avoid stall")
+                        break
+                    }
+                    delay(5)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error queuing input buffer", e)

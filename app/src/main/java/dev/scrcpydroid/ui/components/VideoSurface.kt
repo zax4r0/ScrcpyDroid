@@ -42,11 +42,6 @@ fun VideoSurface(
                     currentOnSurfaceAvailable(holder.surface)
                 }
             }
-        },
-        update = { surfaceView ->
-            if (surfaceView.holder.surface.isValid) {
-                currentOnSurfaceAvailable(surfaceView.holder.surface)
-            }
         }
     )
 }

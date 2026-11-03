@@ -168,13 +168,7 @@ class MirrorViewModel @Inject constructor(
         videoDecoder.start(surface, codecMime, width, height, packetFlow, initialConfig)
 
         // Request a fresh IDR keyframe and config packet from scrcpy server
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                scrcpyClient.getControlWriter()?.resetVideo()
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to send resetVideo", e)
-            }
-        }
+        resetVideo()
     }
 
     fun onSurfaceDestroyed() {
@@ -185,10 +179,19 @@ class MirrorViewModel @Inject constructor(
         videoDecoder.stop()
     }
 
+    private var lastResetVideoTime = 0L
+
     fun resetVideo() {
+        val now = System.currentTimeMillis()
+        if (now - lastResetVideoTime < 300) {
+            return
+        }
+        lastResetVideoTime = now
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 scrcpyClient.getControlWriter()?.resetVideo()
+                Log.d(TAG, "Sent resetVideo to scrcpy server")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed resetVideo", e)
             }
