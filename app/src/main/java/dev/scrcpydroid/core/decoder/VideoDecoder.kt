@@ -24,7 +24,7 @@ class VideoDecoder @Inject constructor() {
 
     companion object {
         private const val TAG = "VideoDecoder"
-        private const val DEQUEUE_TIMEOUT_US = 1000L // 1ms for minimum latency
+        private const val DEQUEUE_TIMEOUT_US = 10_000L // 10ms for reliable non-busy dequeue
     }
 
     private var codec: MediaCodec? = null
@@ -118,7 +118,6 @@ class VideoDecoder @Inject constructor() {
                         format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
                     }
                     format.setInteger(MediaFormat.KEY_PRIORITY, 0)
-                    format.setInteger(MediaFormat.KEY_OPERATING_RATE, Short.MAX_VALUE.toInt())
                     setupCodecSpecificData(format, codecMime, cachedConfig)
                     val activeSurface = synchronized(this@VideoDecoder) { currentSurface } ?: surface
                     val newCodec = MediaCodec.createDecoderByType(codecMime)
@@ -156,7 +155,6 @@ class VideoDecoder @Inject constructor() {
                         format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
                     }
                     format.setInteger(MediaFormat.KEY_PRIORITY, 0)
-                    format.setInteger(MediaFormat.KEY_OPERATING_RATE, Short.MAX_VALUE.toInt())
 
                     val configData = if (packet.isConfig) packet.data else (synchronized(this@VideoDecoder) { lastConfigData } ?: initialConfig)
                     if (configData != null) {
@@ -192,9 +190,7 @@ class VideoDecoder @Inject constructor() {
     }
 
     private suspend fun feedInput(mediaCodec: MediaCodec, packet: VideoPacket) {
-        var queued = false
-        var attempts = 0
-        while (!queued && isRunning.get() && attempts < 5) {
+        while (isRunning.get()) {
             try {
                 val inputIndex = mediaCodec.dequeueInputBuffer(DEQUEUE_TIMEOUT_US)
                 if (inputIndex >= 0) {
@@ -208,11 +204,11 @@ class VideoDecoder @Inject constructor() {
                             else -> 0
                         }
                         mediaCodec.queueInputBuffer(inputIndex, 0, packet.data.size, packet.pts, flags)
-                        queued = true
+                        break
                     }
                 } else {
-                    attempts++
-                    kotlinx.coroutines.yield()
+                    // Decoder input buffers currently full, wait briefly and retry without dropping the packet
+                    delay(1)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error queuing input buffer", e)

@@ -61,9 +61,9 @@ class ScrcpyClient @Inject constructor(
 
     private var videoJob: Job? = null
     private val _videoPacketFlow = MutableSharedFlow<VideoPacket>(
-        replay = 1,
-        extraBufferCapacity = 64,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
+        replay = 0,
+        extraBufferCapacity = 128,
+        onBufferOverflow = BufferOverflow.SUSPEND
     )
     @Volatile
     private var lastConfigPacket: VideoPacket? = null

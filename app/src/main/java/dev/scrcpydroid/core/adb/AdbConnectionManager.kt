@@ -107,7 +107,7 @@ class AdbConnectionManager @Inject constructor(
                 s.trafficClass = 0x10 // IPTOS_LOWDELAY
                 s.setPerformancePreferences(0, 2, 1) // Prioritize low latency
                 s.sendBufferSize = 256 * 1024
-                s.receiveBufferSize = 2 * 1024 * 1024
+                s.receiveBufferSize = 512 * 1024
             }
         } catch (_: Exception) {
             // Ignored if reflection is not available
