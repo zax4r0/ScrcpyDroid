@@ -28,6 +28,9 @@ fun VideoSurface(
                     }
 
                     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                        if (holder.surface.isValid) {
+                            currentOnSurfaceAvailable(holder.surface)
+                        }
                     }
 
                     override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -38,6 +41,11 @@ fun VideoSurface(
                 if (holder.surface.isValid) {
                     currentOnSurfaceAvailable(holder.surface)
                 }
+            }
+        },
+        update = { surfaceView ->
+            if (surfaceView.holder.surface.isValid) {
+                currentOnSurfaceAvailable(surfaceView.holder.surface)
             }
         }
     )

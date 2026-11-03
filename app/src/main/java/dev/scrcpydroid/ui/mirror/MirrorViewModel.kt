@@ -307,6 +307,7 @@ class MirrorViewModel @Inject constructor(
 
     fun onAppResumed() {
         clipboardSyncManager.onResumeOrFocus()
+        resetVideo()
     }
 
     fun disconnect() {

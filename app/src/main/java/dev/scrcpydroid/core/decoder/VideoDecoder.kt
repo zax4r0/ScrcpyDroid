@@ -31,6 +31,13 @@ class VideoDecoder @Inject constructor() {
     private var decodeJob: Job? = null
     private val isRunning = AtomicBoolean(false)
     private var lastConfigData: ByteArray? = null
+
+    // Session counter: bumped on every start(). Loops from an older session compare against it
+    // so they can never shut down a newer decoder session after a quick stop() -> start().
+    @Volatile
+    private var generation = 0
+
+    private fun isSessionActive(gen: Int): Boolean = isRunning.get() && generation == gen
     private var currentSurface: Surface? = null
 
     fun updateSurface(newSurface: Surface): Boolean {
@@ -50,9 +57,10 @@ class VideoDecoder @Inject constructor() {
     }
 
     fun onSurfaceDestroyed() {
-        synchronized(this) {
-            currentSurface = null
-        }
+        // The output surface is gone (app backgrounded / view detached). Keeping the codec alive
+        // against an abandoned surface leaves it in an error state on many vendor decoders, so
+        // release it now and rebuild cleanly from cached SPS/PPS + a fresh IDR when the surface returns.
+        stop()
     }
 
     fun clearConfig() {
@@ -75,28 +83,27 @@ class VideoDecoder @Inject constructor() {
             }
         }
 
-        if (updateSurface(surface)) {
-            return
-        }
-
         stop()
 
-        currentSurface = surface
-        isRunning.set(true)
+        val gen: Int
+        synchronized(this) {
+            gen = ++generation
+            currentSurface = surface
+            isRunning.set(true)
+        }
         decodeJob = CoroutineScope(Dispatchers.Default).launch {
             try {
-                runDecoder(surface, codecMime, width, height, packetFlow, initialConfig)
+                runDecoder(gen, surface, codecMime, width, height, packetFlow, initialConfig)
             } catch (e: CancellationException) {
                 // Expected when decoding is stopped
             } catch (e: Exception) {
                 Log.e(TAG, "Error in video decoding loop", e)
-            } finally {
-                releaseCodec()
             }
         }
     }
 
     private suspend fun CoroutineScope.runDecoder(
+        gen: Int,
         surface: Surface,
         codecMime: String,
         width: Int,
@@ -130,7 +137,7 @@ class VideoDecoder @Inject constructor() {
                     isConfigured = true
 
                     launch(Dispatchers.Default) {
-                        drainOutput(newCodec, bufferInfo)
+                        drainOutput(gen, newCodec, bufferInfo)
                     }
                     Log.d(TAG, "MediaCodec pre-configured with cached SPS/PPS")
                 } catch (e: Exception) {
@@ -141,7 +148,7 @@ class VideoDecoder @Inject constructor() {
             }
 
             packetFlow.collect { packet ->
-                if (!isRunning.get()) return@collect
+                if (!isRunning.get()) throw CancellationException("Decoder stopped")
 
                 if (packet.isConfig) {
                     synchronized(this@VideoDecoder) {
@@ -173,7 +180,7 @@ class VideoDecoder @Inject constructor() {
 
                     // Launch output rendering loop
                     launch(Dispatchers.Default) {
-                        drainOutput(newCodec, bufferInfo)
+                        drainOutput(gen, newCodec, bufferInfo)
                     }
 
                     if (packet.isConfig) {
@@ -182,15 +189,24 @@ class VideoDecoder @Inject constructor() {
                 }
 
                 val currentCodec = mediaCodec ?: return@collect
-                feedInput(currentCodec, packet)
+                feedInput(gen, currentCodec, packet)
             }
         } finally {
-            isRunning.set(false)
+            synchronized(this@VideoDecoder) {
+                if (generation == gen) {
+                    isRunning.set(false)
+                    if (codec === mediaCodec) {
+                        codec = null
+                    }
+                }
+            }
+            try { mediaCodec?.stop() } catch (_: Exception) {}
+            try { mediaCodec?.release() } catch (_: Exception) {}
         }
     }
 
-    private suspend fun feedInput(mediaCodec: MediaCodec, packet: VideoPacket) {
-        while (isRunning.get()) {
+    private suspend fun feedInput(gen: Int, mediaCodec: MediaCodec, packet: VideoPacket) {
+        while (isSessionActive(gen)) {
             try {
                 val inputIndex = mediaCodec.dequeueInputBuffer(DEQUEUE_TIMEOUT_US)
                 if (inputIndex >= 0) {
@@ -217,20 +233,20 @@ class VideoDecoder @Inject constructor() {
         }
     }
 
-    private fun drainOutput(mediaCodec: MediaCodec, bufferInfo: MediaCodec.BufferInfo) {
-        while (isRunning.get()) {
+    private fun drainOutput(gen: Int, mediaCodec: MediaCodec, bufferInfo: MediaCodec.BufferInfo) {
+        while (isSessionActive(gen)) {
             try {
                 var outputIndex = mediaCodec.dequeueOutputBuffer(bufferInfo, DEQUEUE_TIMEOUT_US)
-                while (outputIndex >= 0 && isRunning.get()) {
+                while (outputIndex >= 0 && isSessionActive(gen)) {
                     val surface = synchronized(this) { currentSurface }
                     if (surface != null && surface.isValid) {
                         try {
                             mediaCodec.releaseOutputBuffer(outputIndex, true)
                         } catch (e: Exception) {
-                            mediaCodec.releaseOutputBuffer(outputIndex, false)
+                            try { mediaCodec.releaseOutputBuffer(outputIndex, false) } catch (_: Exception) {}
                         }
                     } else {
-                        mediaCodec.releaseOutputBuffer(outputIndex, false)
+                        try { mediaCodec.releaseOutputBuffer(outputIndex, false) } catch (_: Exception) {}
                     }
                     outputIndex = mediaCodec.dequeueOutputBuffer(bufferInfo, 0L)
                 }
@@ -238,8 +254,12 @@ class VideoDecoder @Inject constructor() {
                     Log.d(TAG, "Decoder output format changed: ${mediaCodec.outputFormat}")
                 }
             } catch (e: Exception) {
-                if (isRunning.get()) {
-                    Log.w(TAG, "Notice in drainOutput: ${e.message}")
+                if (isSessionActive(gen)) {
+                    Log.w(TAG, "Decoder output failed, marking codec dead: ${e.message}")
+                    // Mark the decoder as not running so feedInput stops waiting on a dead codec
+                    // and the next start() performs a full rebuild instead of reusing it.
+                    isRunning.set(false)
+                    decodeJob?.cancel()
                 }
                 break
             }
@@ -287,6 +307,7 @@ class VideoDecoder @Inject constructor() {
 
     @Synchronized
     fun stop() {
+        generation++
         isRunning.set(false)
         currentSurface = null
         decodeJob?.cancel()
