@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
+import android.view.OrientationEventListener
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -130,6 +131,40 @@ fun MirrorScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Real-time orientation sync with controller device (disables auto-rotate on controlled device and mirrors exact orientation)
+    DisposableEffect(context) {
+        val orientationListener = object : OrientationEventListener(context) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
+
+                val targetRotation = when {
+                    orientation in 45..134 -> android.view.Surface.ROTATION_270
+                    orientation in 135..224 -> android.view.Surface.ROTATION_180
+                    orientation in 225..314 -> android.view.Surface.ROTATION_90
+                    orientation >= 315 || orientation < 45 -> android.view.Surface.ROTATION_0
+                    else -> android.view.Surface.ROTATION_0
+                }
+                viewModel.syncRotation(targetRotation)
+            }
+        }
+
+        if (orientationListener.canDetectOrientation()) {
+            orientationListener.enable()
+        }
+
+        val initialRotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            activity?.display?.rotation ?: android.view.Surface.ROTATION_0
+        } else {
+            @Suppress("DEPRECATION")
+            activity?.windowManager?.defaultDisplay?.rotation ?: android.view.Surface.ROTATION_0
+        }
+        viewModel.syncRotation(initialRotation)
+
+        onDispose {
+            orientationListener.disable()
         }
     }
 

@@ -96,17 +96,17 @@ class ScrcpyClient @Inject constructor(
             val dadb = adbResult.getOrThrow()
 
             // Auto-wake & auto-unlock target device if enabled
-            if (options.autoWakeOnConnect || options.autoUnlockOnConnect) {
+            if (options.autoUnlockOnConnect) {
+                unlockDevice(options.devicePassword)
+            } else if (options.autoWakeOnConnect) {
                 try {
-                    val unlockCmd = if (options.autoUnlockOnConnect) {
-                        ScrcpyOptions.buildUnlockCommand(options.devicePassword)
-                    } else {
-                        "input keyevent 224 ; wm dismiss-keyguard"
+                    val lockState = getDeviceLockState()
+                    if (!lockState.isScreenAwake) {
+                        dadb.shell("input keyevent 224")
+                        android.util.Log.d(TAG, "Woke device screen on connect")
                     }
-                    dadb.shell(unlockCmd)
-                    android.util.Log.d(TAG, "Executed wake/unlock on connect")
                 } catch (e: Exception) {
-                    android.util.Log.w(TAG, "Failed autoWake/autoUnlock: ${e.message}")
+                    android.util.Log.w(TAG, "Failed autoWake on connect: ${e.message}")
                 }
             }
 
@@ -290,13 +290,133 @@ class ScrcpyClient @Inject constructor(
 
     fun getLastOptions(): ScrcpyOptions? = lastOptions
 
-    suspend fun unlockDevice(password: String? = null) = withContext(Dispatchers.IO) {
+    data class DeviceLockState(
+        val isScreenAwake: Boolean,
+        val isKeyguardShowing: Boolean,
+        val isDeviceLocked: Boolean
+    ) {
+        val isUnlocked: Boolean
+            get() = isScreenAwake && !isKeyguardShowing && !isDeviceLocked
+    }
+
+    suspend fun getDeviceLockState(): DeviceLockState = withContext(Dispatchers.IO) {
+        val dadb = adbConnectionManager.currentDadb
+            ?: return@withContext DeviceLockState(isScreenAwake = true, isKeyguardShowing = false, isDeviceLocked = false)
+
         try {
-            val cmd = ScrcpyOptions.buildUnlockCommand(password ?: lastOptions?.devicePassword)
-            adbConnectionManager.currentDadb?.shell(cmd)
-            android.util.Log.d(TAG, "Manually triggered unlock on device")
+            val cmd = "echo \"WAKE=\$(dumpsys power 2>/dev/null | grep -E 'mWakefulness=' | head -n 1)\" ; " +
+                      "echo \"KG=\$(dumpsys window policy 2>/dev/null | grep -E 'isKeyguardShowing|isKeyguardLocked' | head -n 1 || dumpsys window 2>/dev/null | grep -E 'mKeyguardShowing|isKeyguardShowing' | head -n 1)\" ; " +
+                      "echo \"TRUST=\$(dumpsys trust 2>/dev/null | grep -iE 'deviceLocked=' | head -n 1)\""
+
+            val response = dadb.shell(cmd).output
+            var isAwake = false
+            var isKeyguardShowing = false
+            var isDeviceLocked = false
+
+            for (line in response.lines()) {
+                val lower = line.trim().lowercase()
+                when {
+                    lower.startsWith("wake=") -> {
+                        isAwake = lower.contains("awake")
+                    }
+                    lower.startsWith("kg=") -> {
+                        if (lower.contains("keyguardshowing=true") || lower.contains("iskeyguardlocked=true") || lower.contains("mshowinglockscreen=true")) {
+                            isKeyguardShowing = true
+                        } else if (lower.contains("keyguardshowing=false") || lower.contains("iskeyguardlocked=false")) {
+                            isKeyguardShowing = false
+                        }
+                    }
+                    lower.startsWith("trust=") -> {
+                        if (lower.contains("devicelocked=true")) {
+                            isDeviceLocked = true
+                        } else if (lower.contains("devicelocked=false")) {
+                            isDeviceLocked = false
+                        }
+                    }
+                }
+            }
+
+            DeviceLockState(
+                isScreenAwake = isAwake,
+                isKeyguardShowing = isKeyguardShowing,
+                isDeviceLocked = isDeviceLocked
+            )
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "Failed reading lock state: ${e.message}")
+            DeviceLockState(isScreenAwake = true, isKeyguardShowing = false, isDeviceLocked = false)
+        }
+    }
+
+    suspend fun unlockDevice(password: String? = null) = withContext(Dispatchers.IO) {
+        val dadb = adbConnectionManager.currentDadb ?: return@withContext
+        val pwd = password?.trim() ?: lastOptions?.devicePassword?.trim()
+
+        try {
+            // Step 1: Check if already unlocked & awake
+            var state = getDeviceLockState()
+            android.util.Log.d(TAG, "Check initial lock state: $state")
+
+            if (state.isUnlocked) {
+                android.util.Log.i(TAG, "Device is already awake and unlocked. Skipping unlock touches.")
+                return@withContext
+            }
+
+            // Step 2: Wake screen if asleep
+            if (!state.isScreenAwake) {
+                dadb.shell("input keyevent 224")
+                delay(200)
+                state = getDeviceLockState()
+                if (state.isUnlocked) {
+                    android.util.Log.i(TAG, "Device woke up unlocked. Stopping.")
+                    return@withContext
+                }
+            }
+
+            // Step 3: Dismiss keyguard gently without touches
+            dadb.shell("wm dismiss-keyguard ; input keyevent 82")
+            delay(150)
+            state = getDeviceLockState()
+            if (state.isUnlocked) {
+                android.util.Log.i(TAG, "Device unlocked via dismiss-keyguard. Stopping.")
+                return@withContext
+            }
+
+            // Step 4: Swipe up to bring up bouncer or dismiss swipe lock
+            dadb.shell("input swipe 500 1600 500 600 150")
+            delay(250)
+            state = getDeviceLockState()
+            if (state.isUnlocked) {
+                android.util.Log.i(TAG, "Device unlocked via swipe up. Stopping.")
+                return@withContext
+            }
+
+            // Step 5: If password configured and still locked, submit credentials
+            if (!pwd.isNullOrEmpty()) {
+                val escaped = pwd.replace(" ", "%s").replace("'", "'\\''")
+                android.util.Log.d(TAG, "Device still locked, entering password...")
+                dadb.shell("input text '$escaped' ; sleep 0.15 ; input keyevent 66")
+                delay(300)
+                state = getDeviceLockState()
+                if (state.isUnlocked) {
+                    android.util.Log.i(TAG, "Device unlocked via password input.")
+                } else {
+                    android.util.Log.d(TAG, "Password submitted, current state: $state")
+                }
+            }
         } catch (e: Exception) {
             android.util.Log.w(TAG, "Failed unlockDevice: ${e.message}")
+        }
+    }
+
+    suspend fun setRemoteRotation(rotation: Int) = withContext(Dispatchers.IO) {
+        val dadb = adbConnectionManager.currentDadb ?: return@withContext
+        try {
+            // Disable remote auto-rotate and lock to identical orientation
+            dadb.shell("settings put system accelerometer_rotation 0 ; settings put system user_rotation $rotation")
+            controlWriter?.resetVideo()
+            android.util.Log.d(TAG, "Synced remote rotation to $rotation")
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "Failed setRemoteRotation: ${e.message}")
         }
     }
 
@@ -309,8 +429,9 @@ class ScrcpyClient @Inject constructor(
     private suspend fun disconnectInternal() {
         try {
             val opts = lastOptions
+            val cmds = mutableListOf<String>()
+            cmds.add("settings put system accelerometer_rotation 1")
             if (opts != null && (opts.dndOnDisconnect || opts.lockOnDisconnect)) {
-                val cmds = mutableListOf<String>()
                 if (opts.dndOnDisconnect) {
                     cmds.add("cmd notification set_dnd none")
                     cmds.add("for s in 0 1 2 3 4 5; do cmd media_session volume --stream \$s --set 0; done")
@@ -318,9 +439,9 @@ class ScrcpyClient @Inject constructor(
                 if (opts.lockOnDisconnect) {
                     cmds.add("input keyevent 223")
                 }
-                if (cmds.isNotEmpty()) {
-                    adbConnectionManager.currentDadb?.shell(cmds.joinToString(" ; "))
-                }
+            }
+            if (cmds.isNotEmpty()) {
+                adbConnectionManager.currentDadb?.shell(cmds.joinToString(" ; "))
             }
         } catch (e: Exception) {
             android.util.Log.w(TAG, "Failed running disconnect shell cleanup: ${e.message}")

@@ -316,6 +316,21 @@ class MirrorViewModel @Inject constructor(
         }
     }
 
+    private var lastSyncedRotation = -1
+
+    fun syncRotation(rotation: Int) {
+        if (rotation == lastSyncedRotation) return
+        lastSyncedRotation = rotation
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                scrcpyClient.setRemoteRotation(rotation)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed syncing rotation: ${e.message}")
+            }
+        }
+    }
+
     fun expandNotificationPanel() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
