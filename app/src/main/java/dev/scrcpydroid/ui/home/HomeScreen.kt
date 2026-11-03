@@ -516,7 +516,7 @@ fun HomeScreen(
 
                         items(
                             items = uiState.recentConnections,
-                            key = { "${it.host}:${it.port}" }
+                            key = { it.uniqueKey }
                         ) { connection ->
                             SavedDeviceCard(
                                 connection = connection,
@@ -568,7 +568,7 @@ fun HomeScreen(
         DeviceSettingsDialog(
             connection = device,
             onSave = { updatedSettings ->
-                viewModel.onUpdateDeviceSettings(device.host, device.port, updatedSettings)
+                viewModel.onUpdateDeviceSettings(device, updatedSettings)
                 deviceSettingsTarget = null
             },
             onDismiss = { deviceSettingsTarget = null }

@@ -18,6 +18,7 @@ data class DeviceSettings(
 
 @Serializable
 data class DeviceConnection(
+    val id: String = "",
     val host: String,
     val port: Int,
     val deviceName: String = "",
@@ -25,6 +26,9 @@ data class DeviceConnection(
     val lastConnected: Long = System.currentTimeMillis(),
     val customSettings: DeviceSettings? = null
 ) {
+    val uniqueKey: String
+        get() = id.ifBlank { "${host}:${port}" }
+
     val displayName: String
         get() = customName.ifBlank { deviceName.ifBlank { "$host:$port" } }
 }

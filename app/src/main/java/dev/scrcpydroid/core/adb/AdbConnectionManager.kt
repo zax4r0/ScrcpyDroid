@@ -16,7 +16,7 @@ import javax.inject.Singleton
 sealed interface ConnectionState {
     data object Disconnected : ConnectionState
     data object Connecting : ConnectionState
-    data class Connected(val deviceName: String) : ConnectionState
+    data class Connected(val deviceName: String, val deviceId: String = "") : ConnectionState
     data class Error(val message: String) : ConnectionState
 }
 
@@ -29,6 +29,9 @@ class AdbConnectionManager @Inject constructor(
 
     private var dadb: Dadb? = null
     val currentDadb: Dadb? get() = dadb
+
+    private var currentDeviceId: String = ""
+    val deviceId: String get() = currentDeviceId
 
     suspend fun connect(host: String, port: Int): Result<Dadb> = withContext(Dispatchers.IO) {
         try {
@@ -48,7 +51,20 @@ class AdbConnectionManager @Inject constructor(
                 "$host:$port"
             }
 
-            _connectionState.value = ConnectionState.Connected(deviceName)
+            val devId = try {
+                val androidId = dadbInstance.shell("settings get secure android_id").output.trim()
+                if (androidId.isNotBlank() && androidId != "null") {
+                    androidId
+                } else {
+                    val serial = dadbInstance.shell("getprop ro.serialno").output.trim()
+                    if (serial.isNotBlank() && serial != "unknown") serial else ""
+                }
+            } catch (_: Exception) {
+                ""
+            }
+            currentDeviceId = devId
+
+            _connectionState.value = ConnectionState.Connected(deviceName, devId)
             Result.success(dadbInstance)
         } catch (e: Exception) {
             val errorMessage = e.message ?: "Failed to connect to $host:$port"
@@ -69,6 +85,7 @@ class AdbConnectionManager @Inject constructor(
         } catch (_: Exception) {
         } finally {
             dadb = null
+            currentDeviceId = ""
         }
     }
 

@@ -286,6 +286,8 @@ class ScrcpyClient @Inject constructor(
 
     fun getDeviceInfo(): DeviceInfo? = deviceInfo
 
+    fun getDeviceId(): String = adbConnectionManager.deviceId
+
     fun getLastOptions(): ScrcpyOptions? = lastOptions
 
     suspend fun unlockDevice(password: String? = null) = withContext(Dispatchers.IO) {

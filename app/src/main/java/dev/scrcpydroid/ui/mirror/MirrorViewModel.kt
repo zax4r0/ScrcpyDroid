@@ -150,7 +150,7 @@ class MirrorViewModel @Inject constructor(
     private fun autoConnect(host: String, port: Int) {
         viewModelScope.launch {
             try {
-                val options = settingsRepository.getOptionsForDevice(host, port)
+                val options = settingsRepository.getOptionsForDevice(host, port, scrcpyClient.getDeviceId())
                 _uiState.update { it.copy(fps = options.maxFps) }
                 scrcpyClient.connect(host, port, options)
             } catch (e: Exception) {
@@ -177,10 +177,13 @@ class MirrorViewModel @Inject constructor(
                 videoDecoder.stop()
                 scrcpyClient.disconnect()
                 delay(400)
-                val options = settingsRepository.getOptionsForDevice(h, port)
+                val options = settingsRepository.getOptionsForDevice(h, port, scrcpyClient.getDeviceId())
                 scrcpyClient.connect(h, port, options)
                 Log.i(TAG, "Auto-reconnect successful!")
                 _uiState.update { it.copy(isConnected = true, errorMessage = null) }
+                if (options.autoUnlockOnConnect) {
+                    scrcpyClient.unlockDevice(options.devicePassword)
+                }
                 val surface = lastAttachedSurface
                 if (surface != null && surface.isValid) {
                     startDecoding(surface)
@@ -364,7 +367,7 @@ class MirrorViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val h = host
-                val options = if (h != null) settingsRepository.getOptionsForDevice(h, port) else settingsRepository.getOptions().first()
+                val options = if (h != null) settingsRepository.getOptionsForDevice(h, port, scrcpyClient.getDeviceId()) else settingsRepository.getOptions().first()
                 scrcpyClient.unlockDevice(options.devicePassword)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed manual unlockDevice", e)
@@ -384,7 +387,7 @@ class MirrorViewModel @Inject constructor(
             viewModelScope.launch(Dispatchers.IO) {
                 try {
                     val h = host
-                    val options = if (h != null) settingsRepository.getOptionsForDevice(h, port) else settingsRepository.getOptions().first()
+                    val options = if (h != null) settingsRepository.getOptionsForDevice(h, port, scrcpyClient.getDeviceId()) else settingsRepository.getOptions().first()
                     if (options.autoUnlockOnConnect) {
                         scrcpyClient.unlockDevice(options.devicePassword)
                     }

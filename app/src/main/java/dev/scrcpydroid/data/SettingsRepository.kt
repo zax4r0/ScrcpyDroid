@@ -137,9 +137,9 @@ class SettingsRepository @Inject constructor(
 
     suspend fun updateDarkThemeMode(mode: String) = updateOption(Keys.DARK_THEME_MODE, mode)
 
-    suspend fun getOptionsForDevice(host: String, port: Int): ScrcpyOptions {
+    suspend fun getOptionsForDevice(host: String, port: Int, deviceId: String = ""): ScrcpyOptions {
         val global = getOptions().first()
-        val connection = connectionRepository.getConnection(host, port)
+        val connection = connectionRepository.getConnection(host, port, deviceId)
         val dev = connection?.customSettings ?: return global
         if (dev.useGlobalSettings) return global
 

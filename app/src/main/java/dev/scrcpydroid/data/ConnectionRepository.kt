@@ -50,9 +50,13 @@ class ConnectionRepository @Inject constructor(
             }
         }
 
-    suspend fun getConnection(host: String, port: Int): DeviceConnection? {
+    suspend fun getConnection(host: String, port: Int, deviceId: String = ""): DeviceConnection? {
         val list = getRecentConnections().first()
-        return list.find { it.host == host && it.port == port }
+        return if (deviceId.isNotBlank()) {
+            list.find { it.id == deviceId } ?: list.find { it.host == host && it.port == port }
+        } else {
+            list.find { it.host == host && it.port == port }
+        }
     }
 
     suspend fun addConnection(connection: DeviceConnection) {
@@ -68,25 +72,37 @@ class ConnectionRepository @Inject constructor(
                 }
             }
 
-            val existing = currentList.find { it.host == connection.host && it.port == connection.port }
+            // Find existing device by persistent deviceId first, or fallback to host:port
+            val existing = if (connection.id.isNotBlank()) {
+                currentList.find { it.id == connection.id } ?: currentList.find { it.host == connection.host && it.port == connection.port }
+            } else {
+                currentList.find { it.host == connection.host && it.port == connection.port }
+            }
+
             val merged = if (existing != null) {
                 connection.copy(
+                    id = if (connection.id.isNotBlank()) connection.id else existing.id,
                     customName = existing.customName.ifBlank { connection.customName },
-                    customSettings = existing.customSettings ?: connection.customSettings
+                    customSettings = existing.customSettings ?: connection.customSettings,
+                    deviceName = if (connection.deviceName.isNotBlank() && connection.deviceName != "${connection.host}:${connection.port}") {
+                        connection.deviceName
+                    } else existing.deviceName.ifBlank { connection.deviceName },
+                    lastConnected = System.currentTimeMillis()
                 )
             } else {
                 connection
             }
 
+            // Keep ONLY ONE entry for this physical device: filter out old entries matching ID or host:port
             val updatedList = (listOf(merged) + currentList.filterNot {
-                it.host == connection.host && it.port == connection.port
+                (merged.id.isNotBlank() && it.id == merged.id) || (it.host == merged.host && it.port == merged.port)
             }).take(20)
 
             preferences[RECENT_CONNECTIONS] = json.encodeToString(updatedList)
         }
     }
 
-    suspend fun renameConnection(host: String, port: Int, newName: String) {
+    suspend fun renameConnection(key: String, newName: String) {
         context.connectionDataStore.edit { preferences ->
             val jsonString = preferences[RECENT_CONNECTIONS] ?: return@edit
             val currentList = try {
@@ -96,14 +112,16 @@ class ConnectionRepository @Inject constructor(
             }
 
             val updatedList = currentList.map {
-                if (it.host == host && it.port == port) it.copy(customName = newName.trim()) else it
+                if (it.uniqueKey == key || it.id == key || it.host == key || "${it.host}:${it.port}" == key) {
+                    it.copy(customName = newName.trim())
+                } else it
             }
 
             preferences[RECENT_CONNECTIONS] = json.encodeToString(updatedList)
         }
     }
 
-    suspend fun updateDeviceSettings(host: String, port: Int, settings: DeviceSettings) {
+    suspend fun updateDeviceSettings(key: String, settings: DeviceSettings) {
         context.connectionDataStore.edit { preferences ->
             val jsonString = preferences[RECENT_CONNECTIONS] ?: return@edit
             val currentList = try {
@@ -113,7 +131,9 @@ class ConnectionRepository @Inject constructor(
             }
 
             val updatedList = currentList.map {
-                if (it.host == host && it.port == port) it.copy(customSettings = settings) else it
+                if (it.uniqueKey == key || it.id == key || it.host == key || "${it.host}:${it.port}" == key) {
+                    it.copy(customSettings = settings)
+                } else it
             }
 
             preferences[RECENT_CONNECTIONS] = json.encodeToString(updatedList)
@@ -130,7 +150,7 @@ class ConnectionRepository @Inject constructor(
             }
 
             val updatedList = currentList.filterNot {
-                it.host == connection.host && it.port == connection.port
+                (connection.id.isNotBlank() && it.id == connection.id) || (it.host == connection.host && it.port == connection.port)
             }
 
             preferences[RECENT_CONNECTIONS] = json.encodeToString(updatedList)

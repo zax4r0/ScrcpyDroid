@@ -23,6 +23,7 @@ data class DiscoveredDevice(
     val name: String,
     val host: String,
     val port: Int,
+    val deviceId: String = "",
     val isPairing: Boolean = false,
     val serviceType: String = "",
     val discoveredAt: Long = System.currentTimeMillis()
@@ -154,19 +155,21 @@ class DeviceDiscoveryManager @Inject constructor(
 
                 val isPairing = resolvedInfo.serviceType?.contains("pairing", ignoreCase = true) == true
                 val cleanName = cleanServiceName(resolvedInfo.serviceName)
+                val deviceId = extractDeviceId(resolvedInfo.serviceName ?: "")
 
                 val device = DiscoveredDevice(
                     name = cleanName,
                     host = hostAddress,
                     port = port,
+                    deviceId = deviceId,
                     isPairing = isPairing,
                     serviceType = resolvedInfo.serviceType ?: ""
                 )
 
-                val key = "${resolvedInfo.serviceName}_${resolvedInfo.serviceType}"
+                val key = if (deviceId.isNotBlank()) "${deviceId}_${if (isPairing) "pair" else "connect"}" else "${resolvedInfo.serviceName}_${resolvedInfo.serviceType}"
                 devicesMap[key] = device
                 _discoveredDevices.value = devicesMap.values.toList()
-                Log.d(TAG, "Device resolved: $cleanName at $hostAddress:$port (pairing=$isPairing)")
+                Log.d(TAG, "Device resolved: $cleanName ($deviceId) at $hostAddress:$port (pairing=$isPairing)")
             }
         }
 
@@ -175,6 +178,17 @@ class DeviceDiscoveryManager @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Error initiating resolve for ${serviceInfo.serviceName}", e)
         }
+    }
+
+    private fun extractDeviceId(raw: String): String {
+        if (raw.startsWith("adb-", ignoreCase = true)) {
+            val trimmed = raw.removePrefix("adb-").removePrefix("ADB-")
+            val parts = trimmed.split("-")
+            if (parts.isNotEmpty() && parts[0].isNotBlank()) {
+                return parts[0]
+            }
+        }
+        return ""
     }
 
     private fun cleanServiceName(raw: String): String {

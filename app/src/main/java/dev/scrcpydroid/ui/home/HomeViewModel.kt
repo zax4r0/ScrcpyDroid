@@ -242,9 +242,11 @@ class HomeViewModel @Inject constructor(
 
                 val deviceInfo = scrcpyClient.getDeviceInfo()
                 val deviceName = deviceInfo?.name?.ifEmpty { trimmedHost } ?: trimmedHost
+                val deviceId = scrcpyClient.getDeviceId()
 
                 connectionRepository.addConnection(
                     DeviceConnection(
+                        id = deviceId,
                         host = trimmedHost,
                         port = portInt,
                         deviceName = deviceName,
@@ -294,13 +296,13 @@ class HomeViewModel @Inject constructor(
 
     fun onRenameConnection(connection: DeviceConnection, newName: String) {
         viewModelScope.launch {
-            connectionRepository.renameConnection(connection.host, connection.port, newName)
+            connectionRepository.renameConnection(connection.uniqueKey, newName)
         }
     }
 
-    fun onUpdateDeviceSettings(host: String, port: Int, settings: DeviceSettings) {
+    fun onUpdateDeviceSettings(connection: DeviceConnection, settings: DeviceSettings) {
         viewModelScope.launch {
-            connectionRepository.updateDeviceSettings(host, port, settings)
+            connectionRepository.updateDeviceSettings(connection.uniqueKey, settings)
         }
     }
 
