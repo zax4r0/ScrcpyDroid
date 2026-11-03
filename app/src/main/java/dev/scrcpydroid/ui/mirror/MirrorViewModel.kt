@@ -15,12 +15,15 @@ import dev.scrcpydroid.core.scrcpy.ScrcpyState
 import dev.scrcpydroid.data.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.IOException
+import java.net.SocketException
 import javax.inject.Inject
 
 private data class TouchEventData(
@@ -58,12 +61,14 @@ class MirrorViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(MirrorUiState())
     val uiState: StateFlow<MirrorUiState> = _uiState.asStateFlow()
 
+    val host: String? = savedStateHandle["host"]
+    val port: Int = savedStateHandle["port"] ?: 5555
+    private var lastAttachedSurface: Surface? = null
+    private var isReconnecting = false
+
     private val touchChannel = Channel<TouchEventData>(capacity = 128)
 
     init {
-        val host: String? = savedStateHandle["host"]
-        val port: Int = savedStateHandle["port"] ?: 5555
-
         // Dedicated low-latency touch worker loop (zero coroutine allocations per touch event)
         viewModelScope.launch(Dispatchers.IO) {
             for (touch in touchChannel) {
@@ -80,6 +85,7 @@ class MirrorViewModel @Inject constructor(
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to inject touch event", e)
+                    handleConnectionFailure(e)
                 }
             }
         }
@@ -117,6 +123,7 @@ class MirrorViewModel @Inject constructor(
                                 errorMessage = state.message
                             )
                         }
+                        autoReconnect()
                     }
                     is ScrcpyState.Disconnected -> {
                         _uiState.update {
@@ -158,7 +165,44 @@ class MirrorViewModel @Inject constructor(
         }
     }
 
+    fun autoReconnect() {
+        val h = host
+        if (h.isNullOrBlank() || isReconnecting) return
+        isReconnecting = true
+
+        viewModelScope.launch {
+            try {
+                Log.i(TAG, "Connection lost, auto-reconnecting to $h:$port...")
+                _uiState.update { it.copy(isConnected = false, errorMessage = "Reconnecting...") }
+                videoDecoder.stop()
+                scrcpyClient.disconnect()
+                delay(400)
+                val options = settingsRepository.getOptions().first()
+                scrcpyClient.connect(h, port, options)
+                Log.i(TAG, "Auto-reconnect successful!")
+                _uiState.update { it.copy(isConnected = true, errorMessage = null) }
+                val surface = lastAttachedSurface
+                if (surface != null && surface.isValid) {
+                    startDecoding(surface)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Auto-reconnect failed: ${e.message}")
+                _uiState.update { it.copy(errorMessage = "Connection lost. Tap to reconnect.") }
+            } finally {
+                isReconnecting = false
+            }
+        }
+    }
+
+    private fun handleConnectionFailure(e: Throwable) {
+        if (e is SocketException || e is IOException) {
+            Log.w(TAG, "Socket failure detected: ${e.message}")
+            autoReconnect()
+        }
+    }
+
     fun startDecoding(surface: Surface) {
+        lastAttachedSurface = surface
         val info = scrcpyClient.getDeviceInfo() ?: _uiState.value.deviceInfo
         val codecMime = info?.codec?.mimeType ?: "video/avc"
         val width = info?.width ?: 1080
@@ -194,6 +238,7 @@ class MirrorViewModel @Inject constructor(
                 Log.d(TAG, "Sent resetVideo to scrcpy server")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed resetVideo", e)
+                handleConnectionFailure(e)
             }
         }
     }
@@ -230,6 +275,7 @@ class MirrorViewModel @Inject constructor(
                 scrcpyClient.getControlWriter()?.pressBack()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed pressBack", e)
+                handleConnectionFailure(e)
             }
         }
     }
@@ -240,6 +286,7 @@ class MirrorViewModel @Inject constructor(
                 scrcpyClient.getControlWriter()?.pressHome()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed pressHome", e)
+                handleConnectionFailure(e)
             }
         }
     }
@@ -250,6 +297,7 @@ class MirrorViewModel @Inject constructor(
                 scrcpyClient.getControlWriter()?.pressAppSwitch()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed pressAppSwitch", e)
+                handleConnectionFailure(e)
             }
         }
     }
@@ -260,6 +308,7 @@ class MirrorViewModel @Inject constructor(
                 scrcpyClient.getControlWriter()?.rotateDevice()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed rotateDevice", e)
+                handleConnectionFailure(e)
             }
         }
     }
@@ -270,6 +319,7 @@ class MirrorViewModel @Inject constructor(
                 scrcpyClient.getControlWriter()?.expandNotificationPanel()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed expandNotificationPanel", e)
+                handleConnectionFailure(e)
             }
         }
     }
@@ -280,6 +330,7 @@ class MirrorViewModel @Inject constructor(
                 scrcpyClient.getControlWriter()?.collapsePanels()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed collapsePanels", e)
+                handleConnectionFailure(e)
             }
         }
     }
@@ -291,6 +342,7 @@ class MirrorViewModel @Inject constructor(
                 _uiState.update { it.copy(isDisplayPowerOn = on) }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed setDisplayPower", e)
+                handleConnectionFailure(e)
             }
         }
     }
@@ -310,7 +362,13 @@ class MirrorViewModel @Inject constructor(
 
     fun onAppResumed() {
         clipboardSyncManager.onResumeOrFocus()
-        resetVideo()
+        val currentState = scrcpyClient.state.value
+        if (currentState is ScrcpyState.Error || currentState is ScrcpyState.Disconnected) {
+            Log.i(TAG, "Resumed with disconnected state, auto-reconnecting to $host:$port")
+            autoReconnect()
+        } else {
+            resetVideo()
+        }
     }
 
     fun disconnect() {

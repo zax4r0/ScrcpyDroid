@@ -126,17 +126,9 @@ class VideoDecoder @Inject constructor() {
             // If cached config is available, configure MediaCodec immediately!
             val cachedConfig = synchronized(this@VideoDecoder) { lastConfigData } ?: initialConfig
             if (cachedConfig != null) {
-                try {
-                    val format = MediaFormat.createVideoFormat(codecMime, width, height)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-                    }
-                    format.setInteger(MediaFormat.KEY_PRIORITY, 0)
-                    setupCodecSpecificData(format, codecMime, cachedConfig)
-                    val activeSurface = synchronized(this@VideoDecoder) { currentSurface } ?: surface
-                    val newCodec = MediaCodec.createDecoderByType(codecMime)
-                    newCodec.configure(format, activeSurface, null, 0)
-                    newCodec.start()
+                val activeSurface = synchronized(this@VideoDecoder) { currentSurface } ?: surface
+                val newCodec = createAndConfigureCodec(codecMime, width, height, activeSurface, cachedConfig)
+                if (newCodec != null) {
                     mediaCodec = newCodec
                     synchronized(this@VideoDecoder) {
                         codec = newCodec
@@ -147,9 +139,8 @@ class VideoDecoder @Inject constructor() {
                         drainOutput(gen, newCodec, bufferInfo)
                     }
                     Log.d(TAG, "MediaCodec pre-configured with cached SPS/PPS")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Pre-configuration failed: ${e.message}")
-                    releaseCodec()
+                } else {
+                    Log.w(TAG, "Pre-configuration failed")
                     isConfigured = false
                 }
             }
@@ -166,30 +157,23 @@ class VideoDecoder @Inject constructor() {
                 }
 
                 if (!isConfigured) {
-                    val format = MediaFormat.createVideoFormat(codecMime, width, height)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
-                    }
-                    format.setInteger(MediaFormat.KEY_PRIORITY, 0)
-
                     val configData = if (packet.isConfig) packet.data else (synchronized(this@VideoDecoder) { lastConfigData } ?: initialConfig)
-                    if (configData != null) {
-                        setupCodecSpecificData(format, codecMime, configData)
-                    }
-
                     val activeSurface = synchronized(this@VideoDecoder) { currentSurface } ?: surface
-                    val newCodec = MediaCodec.createDecoderByType(codecMime)
-                    newCodec.configure(format, activeSurface, null, 0)
-                    newCodec.start()
-                    mediaCodec = newCodec
-                    synchronized(this@VideoDecoder) {
-                        codec = newCodec
-                    }
-                    isConfigured = true
+                    val newCodec = createAndConfigureCodec(codecMime, width, height, activeSurface, configData)
+                    if (newCodec != null) {
+                        mediaCodec = newCodec
+                        synchronized(this@VideoDecoder) {
+                            codec = newCodec
+                        }
+                        isConfigured = true
 
-                    // Launch output rendering loop
-                    launch(Dispatchers.Default) {
-                        drainOutput(gen, newCodec, bufferInfo)
+                        // Launch output rendering loop
+                        launch(Dispatchers.Default) {
+                            drainOutput(gen, newCodec, bufferInfo)
+                        }
+                    } else {
+                        Log.e(TAG, "Failed to create decoder on packet")
+                        return@collect
                     }
 
                     if (packet.isConfig) {
@@ -288,11 +272,46 @@ class VideoDecoder @Inject constructor() {
                     // Mark the decoder as not running so feedInput stops waiting on a dead codec
                     // and the next start() performs a full rebuild instead of reusing it.
                     isRunning.set(false)
-                    decodeJob?.cancel()
                 }
                 break
             }
         }
+    }
+
+    private fun createAndConfigureCodec(
+        codecMime: String,
+        width: Int,
+        height: Int,
+        surface: Surface,
+        configData: ByteArray?
+    ): MediaCodec? {
+        val format = MediaFormat.createVideoFormat(codecMime, width, height)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            format.setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+        }
+        format.setInteger(MediaFormat.KEY_PRIORITY, 0)
+        if (configData != null) {
+            setupCodecSpecificData(format, codecMime, configData)
+        }
+
+        // Retry up to 3 times with brief backoff in case native BufferQueueProducer is still releasing previous buffer (err -22)
+        for (attempt in 1..3) {
+            var c: MediaCodec? = null
+            try {
+                c = MediaCodec.createDecoderByType(codecMime)
+                c.configure(format, surface, null, 0)
+                c.start()
+                return c
+            } catch (e: Exception) {
+                Log.w(TAG, "Configure attempt $attempt failed: ${e.message}")
+                try { c?.stop() } catch (_: Exception) {}
+                try { c?.release() } catch (_: Exception) {}
+                if (attempt < 3) {
+                    try { Thread.sleep(60) } catch (_: Exception) {}
+                }
+            }
+        }
+        return null
     }
 
     private fun setupCodecSpecificData(format: MediaFormat, mimeType: String, data: ByteArray) {

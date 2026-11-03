@@ -104,6 +104,7 @@ class AdbConnectionManager @Inject constructor(
             val socket = pair?.second as? java.net.Socket
             socket?.let { s ->
                 if (!s.tcpNoDelay) s.tcpNoDelay = true
+                if (!s.keepAlive) s.keepAlive = true
                 s.trafficClass = 0x10 // IPTOS_LOWDELAY
                 s.setPerformancePreferences(0, 2, 1) // Prioritize low latency
                 s.sendBufferSize = 256 * 1024
