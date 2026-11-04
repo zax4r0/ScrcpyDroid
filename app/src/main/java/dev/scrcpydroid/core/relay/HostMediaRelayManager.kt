@@ -35,6 +35,7 @@ class HostMediaRelayManager @Inject constructor(
     private var rtspServer: RtspServer? = null
     private var cameraStreamer: CameraStreamer? = null
     private var audioStreamer: AudioStreamer? = null
+    private var reverseStream: AutoCloseable? = null
 
     init {
         updateNetworkUrls()
@@ -64,6 +65,9 @@ class HostMediaRelayManager @Inject constructor(
             // 1. Start RTSP Server
             val server = RtspServer(
                 port = RTSP_PORT,
+                onRequestKeyFrame = {
+                    cameraStreamer?.requestKeyFrame()
+                },
                 onClientCountChanged = { count ->
                     _relayState.update { it.copy(activeClients = count) }
                 }
@@ -118,6 +122,11 @@ class HostMediaRelayManager @Inject constructor(
 
     @Synchronized
     fun stopRelay() {
+        try {
+            reverseStream?.close()
+        } catch (_: Exception) {}
+        reverseStream = null
+
         cameraStreamer?.stop()
         cameraStreamer = null
 
@@ -159,12 +168,13 @@ class HostMediaRelayManager @Inject constructor(
     fun setupAdbReverse(dadb: Dadb) {
         scope.launch(Dispatchers.IO) {
             try {
-                // dadb.open with reverse forwarding protocol
+                reverseStream?.close()
+                // Keep reverse forwarding stream open for the entire duration of the relay session
                 val stream = dadb.open("reverse:forward:tcp:$RTSP_PORT;tcp:$RTSP_PORT")
-                stream.close()
-                Log.i(TAG, "ADB reverse port forwarding established for port $RTSP_PORT")
+                reverseStream = stream
+                Log.i(TAG, "ADB reverse port forwarding held open for port $RTSP_PORT")
             } catch (e: Exception) {
-                Log.w(TAG, "ADB reverse via stream failed, fallback to adb shell", e)
+                Log.w(TAG, "ADB reverse via stream failed: ${e.message}")
             }
         }
     }

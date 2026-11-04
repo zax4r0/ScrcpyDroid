@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class RtspServer(
     private val port: Int = 8554,
+    private val onRequestKeyFrame: () -> Unit = {},
     private val onClientCountChanged: (Int) -> Unit = {}
 ) {
     companion object {
@@ -215,6 +216,26 @@ class RtspServer(
         }
     }
 
+    private fun sendSingleNaluToSession(session: RtspClientSession, nalu: ByteArray, timestampUs: Long) {
+        val rtpTimestamp = (timestampUs * 90 / 1000).toInt()
+        val seq = videoSeq.getAndIncrement() and 0xFFFF
+        val rtpPacket = buildRtpPacket(
+            payloadType = VIDEO_PAYLOAD_TYPE,
+            sequenceNumber = seq,
+            timestamp = rtpTimestamp,
+            ssrc = SSRC_VIDEO,
+            marker = true,
+            payload = nalu
+        )
+        try {
+            if (session.isInterleaved) {
+                session.sendInterleaved(session.videoInterleavedChannel, rtpPacket)
+            } else {
+                session.sendUdp(true, rtpPacket)
+            }
+        } catch (_: Exception) {}
+    }
+
     private fun buildRtpPacket(
         payloadType: Int,
         sequenceNumber: Int,
@@ -313,9 +334,17 @@ class RtspServer(
         }
 
         private fun handleDescribe(cseq: String) {
-            val spsBase64 = spsBytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) } ?: "Z00AKp2oHgCJ+WbgICAoAAADAAgAAAMBlCA="
-            val ppsBase64 = ppsBytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) } ?: "aO48gA=="
+            val sps = spsBytes
+            val pps = ppsBytes
+            val spsBase64 = sps?.let { Base64.encodeToString(it, Base64.NO_WRAP) } ?: "Z00AKp2oHgCJ+WbgICAoAAADAAgAAAMBlCA="
+            val ppsBase64 = pps?.let { Base64.encodeToString(it, Base64.NO_WRAP) } ?: "aO48gA=="
             val sprop = "$spsBase64,$ppsBase64"
+
+            val profileLevelId = if (sps != null && sps.size >= 4) {
+                String.format("%02x%02x%02x", sps[1], sps[2], sps[3])
+            } else {
+                "42e01f"
+            }
 
             val sdp = StringBuilder()
                 .append("v=0\r\n")
@@ -325,7 +354,7 @@ class RtspServer(
                 .append("t=0 0\r\n")
                 .append("m=video 0 RTP/AVP 96\r\n")
                 .append("a=rtpmap:96 H264/90000\r\n")
-                .append("a=fmtp:96 packetization-mode=1;profile-level-id=42e01f;sprop-parameter-sets=$sprop\r\n")
+                .append("a=fmtp:96 packetization-mode=1;profile-level-id=$profileLevelId;sprop-parameter-sets=$sprop\r\n")
                 .append("a=control:trackID=0\r\n")
                 .append("m=audio 0 RTP/AVP 97\r\n")
                 .append("a=rtpmap:97 MPEG4-GENERIC/44100/1\r\n")
@@ -381,6 +410,17 @@ class RtspServer(
                     "Session: 12345678\r\n" +
                     "Range: npt=0.000-\r\n\r\n"
             sendResponse(response)
+
+            // Trigger instantaneous keyframe from camera encoder
+            onRequestKeyFrame()
+
+            // Pre-seed SPS and PPS so the client decoder initializes immediately
+            spsBytes?.let { sps ->
+                sendSingleNaluToSession(this, sps, 0)
+            }
+            ppsBytes?.let { pps ->
+                sendSingleNaluToSession(this, pps, 0)
+            }
         }
 
         private fun handleTeardown(cseq: String) {

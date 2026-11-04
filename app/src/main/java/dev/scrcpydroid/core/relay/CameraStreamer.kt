@@ -2,8 +2,6 @@ package dev.scrcpydroid.core.relay
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.ImageFormat
-import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
@@ -13,6 +11,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
@@ -23,11 +22,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.nio.ByteBuffer
 
 /**
  * Hardware-accelerated Camera2 streamer that encodes 720p/30fps H.264 video
- * and feeds it into the RTSP / HTTP server and optional UI preview.
+ * and feeds parsed Annex B NAL units into the RTSP server.
  */
 class CameraStreamer(
     private val context: Context,
@@ -39,7 +37,7 @@ class CameraStreamer(
         const val VIDEO_WIDTH = 1280
         const val VIDEO_HEIGHT = 720
         private const val FRAME_RATE = 30
-        private const val BIT_RATE = 2_000_000 // 2 Mbps
+        private const val BIT_RATE = 2_500_000 // 2.5 Mbps
         private const val I_FRAME_INTERVAL = 1 // 1 second keyframe interval
     }
 
@@ -60,7 +58,6 @@ class CameraStreamer(
     fun setPreviewSurface(surface: Surface?) {
         previewSurface = surface
         if (isStreaming && cameraDevice != null) {
-            // Reconfigure capture session with new preview surface
             createCaptureSession()
         }
     }
@@ -99,6 +96,18 @@ class CameraStreamer(
             openCamera()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to switch camera", e)
+        }
+    }
+
+    fun requestKeyFrame() {
+        try {
+            val params = Bundle().apply {
+                putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+            }
+            mediaCodec?.setParameters(params)
+            Log.i(TAG, "Instantaneous keyframe requested from hardware encoder")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed requesting keyframe", e)
         }
     }
 
@@ -161,6 +170,13 @@ class CameraStreamer(
         previewSurface?.let { surfaces.add(it) }
 
         try {
+            val chars = cameraManager.getCameraCharacteristics(device.id)
+            val fpsRanges = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+            val targetFpsRange = fpsRanges?.firstOrNull { it.upper == 30 && it.lower <= 30 }
+                ?: fpsRanges?.firstOrNull { it.upper == 30 }
+                ?: fpsRanges?.firstOrNull()
+                ?: Range(15, 30)
+
             val sessionCallback = object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: CameraCaptureSession) {
                     captureSession = session
@@ -169,10 +185,10 @@ class CameraStreamer(
                         previewSurface?.let { addTarget(it) }
                         set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
                         set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
-                        set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(30, 30))
+                        set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, targetFpsRange)
                     }
                     session.setRepeatingRequest(requestBuilder.build(), null, cameraHandler)
-                    Log.i(TAG, "CameraCaptureSession started with ${surfaces.size} output surfaces")
+                    Log.i(TAG, "CameraCaptureSession started (FPS Range: $targetFpsRange)")
                 }
 
                 override fun onConfigureFailed(session: CameraCaptureSession) {
@@ -219,10 +235,12 @@ class CameraStreamer(
                         val data = ByteArray(bufferInfo.size)
                         outputBuffer.get(data)
 
-                        // Strip start code (0x00000001 or 0x000001) if present
-                        val cleanNalu = extractNalu(data)
-                        if (cleanNalu.isNotEmpty()) {
-                            onNalUnit(cleanNalu, bufferInfo.presentationTimeUs)
+                        // Split multi-NAL Annex B chunks (e.g. SPS + PPS + IDR slice in one buffer)
+                        val nals = extractNalUnits(data)
+                        for (nal in nals) {
+                            if (nal.isNotEmpty()) {
+                                onNalUnit(nal, bufferInfo.presentationTimeUs)
+                            }
                         }
                     }
                     codec.releaseOutputBuffer(outputIndex, false)
@@ -232,28 +250,54 @@ class CameraStreamer(
                     val csd0 = format.getByteBuffer("csd-0") // SPS
                     val csd1 = format.getByteBuffer("csd-1") // PPS
                     if (csd0 != null) {
-                        val sps = ByteArray(csd0.remaining())
-                        csd0.get(sps)
-                        onNalUnit(extractNalu(sps), 0)
+                        val spsData = ByteArray(csd0.remaining())
+                        csd0.get(spsData)
+                        for (nal in extractNalUnits(spsData)) {
+                            onNalUnit(nal, 0)
+                        }
                     }
                     if (csd1 != null) {
-                        val pps = ByteArray(csd1.remaining())
-                        csd1.get(pps)
-                        onNalUnit(extractNalu(pps), 0)
+                        val ppsData = ByteArray(csd1.remaining())
+                        csd1.get(ppsData)
+                        for (nal in extractNalUnits(ppsData)) {
+                            onNalUnit(nal, 0)
+                        }
                     }
                 }
             }
         }
     }
 
-    private fun extractNalu(data: ByteArray): ByteArray {
-        var start = 0
-        if (data.size >= 4 && data[0] == 0.toByte() && data[1] == 0.toByte() && data[2] == 0.toByte() && data[3] == 1.toByte()) {
-            start = 4
-        } else if (data.size >= 3 && data[0] == 0.toByte() && data[1] == 0.toByte() && data[2] == 1.toByte()) {
-            start = 3
+    /**
+     * Splits an Annex B byte stream into individual NAL units by detecting 0x00000001 or 0x000001 start codes.
+     */
+    private fun extractNalUnits(data: ByteArray): List<ByteArray> {
+        val nalUnits = mutableListOf<ByteArray>()
+        var i = 0
+        var lastStart = -1
+
+        while (i < data.size - 3) {
+            val is4Byte = (data[i] == 0.toByte() && data[i + 1] == 0.toByte() && data[i + 2] == 0.toByte() && data[i + 3] == 1.toByte())
+            val is3Byte = !is4Byte && (data[i] == 0.toByte() && data[i + 1] == 0.toByte() && data[i + 2] == 1.toByte())
+
+            if (is4Byte || is3Byte) {
+                if (lastStart != -1 && i > lastStart) {
+                    nalUnits.add(data.copyOfRange(lastStart, i))
+                }
+                lastStart = if (is4Byte) i + 4 else i + 3
+                i = lastStart
+                continue
+            }
+            i++
         }
-        return if (start > 0) data.copyOfRange(start, data.size) else data
+
+        if (lastStart != -1 && lastStart < data.size) {
+            nalUnits.add(data.copyOfRange(lastStart, data.size))
+        } else if (lastStart == -1 && data.isNotEmpty()) {
+            nalUnits.add(data)
+        }
+
+        return nalUnits
     }
 
     fun stop() {
