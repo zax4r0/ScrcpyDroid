@@ -145,11 +145,37 @@ class TargetCamSwapManager @Inject constructor(
             val scopeCmd = "su -c 'apps=$(pm list packages -3 | cut -d: -f2 | grep -v $CAMSWAP_PACKAGE | sed \"s/$/\\/0/\" | tr \"\\n\" \" \"); $LSP_CLI scope add $CAMSWAP_PACKAGE \$apps'"
             dadb.shell(scopeCmd)
 
-            // 5. Push stream URL configuration
-            onProgress("Configuring stream URL...")
-            dadb.shell("mkdir -p /sdcard/CamSwap /sdcard/DCIM/Camera")
-            dadb.shell("echo '$rtspUrl' > /sdcard/CamSwap/stream_url.txt")
-            dadb.shell("echo '$rtspUrl' > /sdcard/DCIM/Camera/virtual_url.txt")
+            // 5. Push CamSwap cs_config.json configuration
+            onProgress("Configuring stream URL in CamSwap...")
+            val configJson = """
+            {
+              "injection_mode": "lsposed",
+              "disable_module": false,
+              "play_video_sound": true,
+              "force_private_dir": false,
+              "disable_toast": false,
+              "enable_random_play": false,
+              "enable_mic_hook": true,
+              "mic_hook_mode": "mute",
+              "enable_photo_fake": true,
+              "notification_control_enabled": false,
+              "overlay_control_enabled": false,
+              "media_source_type": "stream",
+              "stream_url": "$rtspUrl",
+              "stream_auto_reconnect": true,
+              "stream_enable_local_fallback": false,
+              "stream_transport_hint": "tcp",
+              "stream_timeout_ms": 5000
+            }
+            """.trimIndent().replace("\n", "").replace("\"", "\\\"")
+
+            dadb.shell("su -c 'mkdir -p /sdcard/DCIM/Camera1 /sdcard/DCIM/Camera'")
+            dadb.shell("su -c 'cat << \"EOF\" > /sdcard/DCIM/Camera1/cs_config.json\n{\n  \"injection_mode\": \"lsposed\",\n  \"disable_module\": false,\n  \"play_video_sound\": true,\n  \"force_private_dir\": false,\n  \"disable_toast\": false,\n  \"enable_random_play\": false,\n  \"enable_mic_hook\": true,\n  \"mic_hook_mode\": \"mute\",\n  \"enable_photo_fake\": true,\n  \"notification_control_enabled\": false,\n  \"overlay_control_enabled\": false,\n  \"media_source_type\": \"stream\",\n  \"stream_url\": \"$rtspUrl\",\n  \"stream_auto_reconnect\": true,\n  \"stream_enable_local_fallback\": false,\n  \"stream_transport_hint\": \"tcp\",\n  \"stream_timeout_ms\": 5000\n}\nEOF\nchmod 666 /sdcard/DCIM/Camera1/cs_config.json'")
+
+            // Broadcast config update to active hooks
+            dadb.shell("am broadcast -a io.github.zensu357.camswap.ACTION_UPDATE_CONFIG --es config_json \"$configJson\" 2>/dev/null")
+
+            // Copy to clipboard as helper
             dadb.shell("service call clipboard 2 s16 '$rtspUrl' || cmd clipboard set '$rtspUrl'")
 
             // Refresh status
@@ -159,6 +185,32 @@ class TargetCamSwapManager @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Auto-deploy failed", e)
             _status.update { it.copy(error = e.message) }
+            Result.failure(e)
+        }
+    }
+
+    suspend fun restartTargetApps(dadb: Dadb, onProgress: (String) -> Unit = {}): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            onProgress("Restarting scoped target apps...")
+            val killCmd = "su -c 'for p in $(pm list packages -3 | cut -d: -f2); do am force-stop \$p; done'"
+            dadb.shell(killCmd)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed stopping target apps", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun rebootTarget(dadb: Dadb, soft: Boolean = true): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            if (soft) {
+                dadb.shell("su -c setprop ctl.restart zygote")
+            } else {
+                dadb.shell("su -c reboot")
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed rebooting target", e)
             Result.failure(e)
         }
     }

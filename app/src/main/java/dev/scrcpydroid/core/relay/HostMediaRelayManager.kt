@@ -186,13 +186,17 @@ class HostMediaRelayManager @Inject constructor(
         scope.launch(Dispatchers.IO) {
             try {
                 val url = _relayState.value.localRtspUrl
-                // Save to common virtual camera paths
-                dadb.shell("mkdir -p /sdcard/CamSwap /sdcard/DCIM/Camera")
-                dadb.shell("echo '$url' > /sdcard/CamSwap/stream_url.txt")
-                dadb.shell("echo '$url' > /sdcard/DCIM/Camera/virtual_url.txt")
+                // Save to CamSwap official config file
+                dadb.shell("su -c 'mkdir -p /sdcard/DCIM/Camera1 /sdcard/DCIM/Camera'")
+                val cfg = "{\\\"injection_mode\\\":\\\"lsposed\\\",\\\"disable_module\\\":false,\\\"play_video_sound\\\":true,\\\"force_private_dir\\\":false,\\\"disable_toast\\\":false,\\\"enable_random_play\\\":false,\\\"enable_mic_hook\\\":true,\\\"mic_hook_mode\\\":\\\"mute\\\",\\\"enable_photo_fake\\\":true,\\\"notification_control_enabled\\\":false,\\\"overlay_control_enabled\\\":false,\\\"media_source_type\\\":\\\"stream\\\",\\\"stream_url\\\":\\\"$url\\\",\\\"stream_auto_reconnect\\\":true,\\\"stream_enable_local_fallback\\\":false,\\\"stream_transport_hint\\\":\\\"tcp\\\",\\\"stream_timeout_ms\\\":5000}"
+                dadb.shell("su -c 'echo \"$cfg\" > /sdcard/DCIM/Camera1/cs_config.json && chmod 666 /sdcard/DCIM/Camera1/cs_config.json'")
+
+                // Broadcast config reload to CamSwap and all hooked apps
+                dadb.shell("am broadcast -a io.github.zensu357.camswap.ACTION_UPDATE_CONFIG --es config_json \"$cfg\" 2>/dev/null")
+
                 // Copy to remote clipboard via Android service
                 dadb.shell("service call clipboard 2 s16 '$url' || cmd clipboard set '$url'")
-                Log.i(TAG, "Stream URL pushed to target device")
+                Log.i(TAG, "CamSwap stream config pushed to target device")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to push stream URL to target device", e)
             }

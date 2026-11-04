@@ -494,6 +494,36 @@ class MirrorViewModel @Inject constructor(
         }
     }
 
+    fun restartTargetApps(onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val dadb = scrcpyClient.getDadb() ?: run {
+                onComplete(false, "No active ADB connection")
+                return@launch
+            }
+            val result = targetCamSwapManager.restartTargetApps(dadb)
+            if (result.isSuccess) {
+                onComplete(true, "Scoped target apps restarted successfully")
+            } else {
+                onComplete(false, result.exceptionOrNull()?.message ?: "Failed restarting apps")
+            }
+        }
+    }
+
+    fun rebootTarget(soft: Boolean = true, onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val dadb = scrcpyClient.getDadb() ?: run {
+                onComplete(false, "No active ADB connection")
+                return@launch
+            }
+            val result = targetCamSwapManager.rebootTarget(dadb, soft)
+            if (result.isSuccess) {
+                onComplete(true, if (soft) "Soft rebooting target UI/Zygote..." else "Target phone is rebooting...")
+            } else {
+                onComplete(false, result.exceptionOrNull()?.message ?: "Failed to reboot target")
+            }
+        }
+    }
+
     fun disconnect() {
         viewModelScope.launch {
             hostMediaRelayManager.stopRelay()
