@@ -3,21 +3,28 @@ package dev.scrcpydroid.ui.mirror
 import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.SurfaceTexture
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.view.TextureView
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,22 +35,32 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -61,6 +78,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -68,12 +86,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import kotlin.math.roundToInt
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -92,7 +117,39 @@ fun MirrorScreen(
     viewModel: MirrorViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val relayState by viewModel.relayState.collectAsStateWithLifecycle()
     var showDisconnectDialog by remember { mutableStateOf(false) }
+    var showRelayInfoDialog by remember { mutableStateOf(false) }
+
+    var previewOffsetX by remember { mutableFloatStateOf(40f) }
+    var previewOffsetY by remember { mutableFloatStateOf(160f) }
+
+
+
+    val context = LocalContext.current
+    val view = LocalView.current
+    val activity = context as? Activity
+    val activityManager = remember(context) {
+        context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+    }
+
+    var isPinned by remember {
+        mutableStateOf(
+            activityManager?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+        )
+    }
+
+    val relayPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val cameraGranted = permissions[android.Manifest.permission.CAMERA] == true
+        val micGranted = permissions[android.Manifest.permission.RECORD_AUDIO] == true
+        if (cameraGranted && micGranted) {
+            viewModel.toggleHostRelay()
+        } else {
+            Toast.makeText(context, "Camera & Microphone permissions required for Relay", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Forward Android back gesture directly to the controlled remote device
     BackHandler(enabled = true) {
@@ -109,18 +166,7 @@ fun MirrorScreen(
         }
     }
 
-    val context = LocalContext.current
-    val view = LocalView.current
-    val activity = context as? Activity
-    val activityManager = remember(context) {
-        context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-    }
 
-    var isPinned by remember {
-        mutableStateOf(
-            activityManager?.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
-        )
-    }
 
     // Keep pinning state updated when resumed
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -548,6 +594,60 @@ fun MirrorScreen(
                         )
                     }
 
+                    // Host Camera & Mic Relay
+                    FilledIconButton(
+                        onClick = {
+                            val hasCamera = ContextCompat.checkSelfPermission(
+                                context,
+                                android.Manifest.permission.CAMERA
+                            ) == PackageManager.PERMISSION_GRANTED
+                            val hasMic = ContextCompat.checkSelfPermission(
+                                context,
+                                android.Manifest.permission.RECORD_AUDIO
+                            ) == PackageManager.PERMISSION_GRANTED
+
+                            if (hasCamera && hasMic) {
+                                viewModel.toggleHostRelay()
+                            } else {
+                                relayPermissionLauncher.launch(
+                                    arrayOf(
+                                        android.Manifest.permission.CAMERA,
+                                        android.Manifest.permission.RECORD_AUDIO
+                                    )
+                                )
+                            }
+                        },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = if (relayState.isStreaming) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = if (relayState.isStreaming) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(
+                            imageVector = if (relayState.isStreaming) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                            contentDescription = if (relayState.isStreaming) "Stop Media Relay" else "Start Media Relay",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    if (relayState.isStreaming) {
+                        // Relay Setup & Info
+                        FilledIconButton(
+                            onClick = { showRelayInfoDialog = true },
+                            modifier = Modifier.size(44.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Relay Setup Info",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
                     // Disconnect
                     FilledIconButton(
                         onClick = { showDisconnectDialog = true },
@@ -595,6 +695,105 @@ fun MirrorScreen(
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Medium
                     )
+                }
+            }
+        }
+        // Floating Draggable Camera Preview (Host Media Relay PiP)
+        if (relayState.isStreaming) {
+            Surface(
+                modifier = Modifier
+                    .offset { IntOffset(previewOffsetX.roundToInt(), previewOffsetY.roundToInt()) }
+                    .size(width = 110.dp, height = 150.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.8f), RoundedCornerShape(18.dp))
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            previewOffsetX = (previewOffsetX + dragAmount.x).coerceIn(0f, 2000f)
+                            previewOffsetY = (previewOffsetY + dragAmount.y).coerceIn(0f, 3000f)
+                        }
+                    },
+                shape = RoundedCornerShape(18.dp),
+                color = Color.Black,
+                tonalElevation = 8.dp,
+                shadowElevation = 8.dp
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    AndroidView(
+                        factory = { ctx ->
+                            TextureView(ctx).apply {
+                                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                                    override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, w: Int, h: Int) {
+                                        viewModel.setRelayPreviewSurface(android.view.Surface(surfaceTexture))
+                                    }
+                                    override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, w: Int, h: Int) {}
+                                    override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
+                                        viewModel.setRelayPreviewSurface(null)
+                                        return true
+                                    }
+                                    override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {}
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // Top quick controls
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Switch front/back camera
+                        FilledIconButton(
+                            onClick = { viewModel.switchRelayCamera() },
+                            modifier = Modifier.size(30.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = Color.Black.copy(alpha = 0.6f),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Cameraswitch,
+                                contentDescription = "Switch Camera",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        // Mute/unmute microphone
+                        FilledIconButton(
+                            onClick = { viewModel.toggleRelayMicMute() },
+                            modifier = Modifier.size(30.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = if (relayState.isMicMuted) MaterialTheme.colorScheme.error else Color.Black.copy(alpha = 0.6f),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Icon(
+                                imageVector = if (relayState.isMicMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                                contentDescription = if (relayState.isMicMuted) "Unmute Mic" else "Mute Mic",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    // Bottom info pill
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 4.dp)
+                            .clickable { showRelayInfoDialog = true },
+                        shape = CircleShape,
+                        color = Color.Black.copy(alpha = 0.65f)
+                    ) {
+                        Text(
+                            text = if (relayState.activeClients > 0) "${relayState.activeClients} connected" else "Live",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (relayState.activeClients > 0) Color.Green else Color.White,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
         }
@@ -646,6 +845,123 @@ fun MirrorScreen(
             dismissButton = {
                 TextButton(onClick = { showDisconnectDialog = false }) {
                     Text(text = "Cancel")
+                }
+            }
+        )
+    }
+
+    if (showRelayInfoDialog) {
+        val clipboardManager = LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { showRelayInfoDialog = false },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Videocam,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Host Camera & Mic Relay",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Streams this unrooted controller phone's camera & microphone to the rooted target phone for video calls (WhatsApp, Zoom, Meet, Telegram).",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Target Stream URL (via ADB Reverse):",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = relayState.localRtspUrl,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                FilledTonalIconButton(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(relayState.localRtspUrl))
+                                        Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentCopy,
+                                        contentDescription = "Copy",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            if (relayState.lanRtspUrl != null) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Wi-Fi LAN URL:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                                Text(
+                                    text = relayState.lanRtspUrl ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = "Instructions for Rooted Target Phone:\n" +
+                                "1. Install CamSwap (or VCAM) LSPosed module.\n" +
+                                "2. Scope CamSwap to your calling app (WhatsApp/Zoom/Meet).\n" +
+                                "3. Paste the Stream URL (${relayState.localRtspUrl}).\n" +
+                                "4. The calling app will receive your camera & microphone feed seamlessly!",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.pushRelayStreamUrlToTarget()
+                        clipboardManager.setText(AnnotatedString(relayState.localRtspUrl))
+                        Toast.makeText(context, "Stream URL pushed to target phone & copied!", Toast.LENGTH_SHORT).show()
+                    },
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = "Send URL to Target")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRelayInfoDialog = false }) {
+                    Text(text = "Close")
                 }
             }
         )

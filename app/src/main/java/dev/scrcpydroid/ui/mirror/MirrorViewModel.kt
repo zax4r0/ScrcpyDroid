@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.scrcpydroid.core.clipboard.ClipboardSyncManager
 import dev.scrcpydroid.core.decoder.VideoDecoder
+import dev.scrcpydroid.core.relay.HostMediaRelayManager
+import dev.scrcpydroid.core.relay.RelayState
 import dev.scrcpydroid.core.scrcpy.ControlMessageWriter
 import dev.scrcpydroid.core.scrcpy.DeviceInfo
 import dev.scrcpydroid.core.scrcpy.ScrcpyClient
@@ -53,6 +55,7 @@ class MirrorViewModel @Inject constructor(
     private val videoDecoder: VideoDecoder,
     private val settingsRepository: SettingsRepository,
     private val clipboardSyncManager: ClipboardSyncManager,
+    private val hostMediaRelayManager: HostMediaRelayManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -62,6 +65,8 @@ class MirrorViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(MirrorUiState())
     val uiState: StateFlow<MirrorUiState> = _uiState.asStateFlow()
+
+    val relayState: StateFlow<RelayState> = hostMediaRelayManager.relayState
 
     val host: String? = savedStateHandle["host"]
     val port: Int = savedStateHandle["port"] ?: 5555
@@ -433,8 +438,37 @@ class MirrorViewModel @Inject constructor(
         }
     }
 
+    fun toggleHostRelay() {
+        if (relayState.value.isStreaming) {
+            hostMediaRelayManager.stopRelay()
+        } else {
+            val dadb = scrcpyClient.getDadb()
+            hostMediaRelayManager.startRelay(dadb)
+        }
+    }
+
+    fun switchRelayCamera() {
+        hostMediaRelayManager.switchCamera()
+    }
+
+    fun toggleRelayMicMute() {
+        hostMediaRelayManager.toggleMicMute()
+    }
+
+    fun setRelayPreviewSurface(surface: Surface?) {
+        hostMediaRelayManager.setPreviewSurface(surface)
+    }
+
+    fun pushRelayStreamUrlToTarget() {
+        val dadb = scrcpyClient.getDadb()
+        if (dadb != null) {
+            hostMediaRelayManager.pushStreamUrlToTargetDevice(dadb)
+        }
+    }
+
     fun disconnect() {
         viewModelScope.launch {
+            hostMediaRelayManager.stopRelay()
             clipboardSyncManager.stop()
             videoDecoder.stop()
             videoDecoder.clearConfig()
@@ -445,6 +479,7 @@ class MirrorViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
+        hostMediaRelayManager.stopRelay()
         clipboardSyncManager.stop()
         videoDecoder.stop()
     }

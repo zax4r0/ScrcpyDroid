@@ -2,6 +2,7 @@ package dev.scrcpydroid.core.scrcpy
 
 import android.content.Context
 import dadb.AdbStream
+import dadb.Dadb
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.scrcpydroid.core.adb.AdbConnectionManager
 import dev.scrcpydroid.core.adb.AdbKeyManager
@@ -290,6 +291,8 @@ class ScrcpyClient @Inject constructor(
     fun getLastConfigPacket(): VideoPacket? = lastConfigPacket
 
     fun getControlWriter(): ControlMessageWriter? = controlWriter
+
+    fun getDadb(): Dadb? = adbConnectionManager.currentDadb
 
     fun getDeviceInfo(): DeviceInfo? = deviceInfo
 

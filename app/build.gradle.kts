@@ -15,8 +15,8 @@ android {
         applicationId = "dev.scrcpydroid"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.0.12"
+        versionCode = 14
+        versionName = "1.0.13"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
