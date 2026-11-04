@@ -10,6 +10,8 @@ import dev.scrcpydroid.core.clipboard.ClipboardSyncManager
 import dev.scrcpydroid.core.decoder.VideoDecoder
 import dev.scrcpydroid.core.relay.HostMediaRelayManager
 import dev.scrcpydroid.core.relay.RelayState
+import dev.scrcpydroid.core.relay.TargetCamSwapManager
+import dev.scrcpydroid.core.relay.TargetSwapStatus
 import dev.scrcpydroid.core.scrcpy.ControlMessageWriter
 import dev.scrcpydroid.core.scrcpy.DeviceInfo
 import dev.scrcpydroid.core.scrcpy.ScrcpyClient
@@ -56,6 +58,7 @@ class MirrorViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val clipboardSyncManager: ClipboardSyncManager,
     private val hostMediaRelayManager: HostMediaRelayManager,
+    private val targetCamSwapManager: TargetCamSwapManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -67,6 +70,7 @@ class MirrorViewModel @Inject constructor(
     val uiState: StateFlow<MirrorUiState> = _uiState.asStateFlow()
 
     val relayState: StateFlow<RelayState> = hostMediaRelayManager.relayState
+    val targetSwapStatus: StateFlow<TargetSwapStatus> = targetCamSwapManager.status
 
     val host: String? = savedStateHandle["host"]
     val port: Int = savedStateHandle["port"] ?: 5555
@@ -463,6 +467,30 @@ class MirrorViewModel @Inject constructor(
         val dadb = scrcpyClient.getDadb()
         if (dadb != null) {
             hostMediaRelayManager.pushStreamUrlToTargetDevice(dadb)
+        }
+    }
+
+    fun checkTargetSwapStatus() {
+        viewModelScope.launch {
+            val dadb = scrcpyClient.getDadb() ?: return@launch
+            targetCamSwapManager.checkTargetStatus(dadb)
+        }
+    }
+
+    fun autoConfigureTargetCameraSwap(onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val dadb = scrcpyClient.getDadb()
+            if (dadb == null) {
+                onComplete(false, "No active ADB connection to target")
+                return@launch
+            }
+            val url = relayState.value.localRtspUrl
+            val result = targetCamSwapManager.autoDeployAndConfigure(dadb, url)
+            if (result.isSuccess) {
+                onComplete(true, "Target Camera Swap configured! All apps scoped.")
+            } else {
+                onComplete(false, result.exceptionOrNull()?.message ?: "Setup failed")
+            }
         }
     }
 

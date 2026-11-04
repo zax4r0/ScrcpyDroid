@@ -46,6 +46,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Home
@@ -120,11 +121,6 @@ fun MirrorScreen(
     val relayState by viewModel.relayState.collectAsStateWithLifecycle()
     var showDisconnectDialog by remember { mutableStateOf(false) }
     var showRelayInfoDialog by remember { mutableStateOf(false) }
-
-    var previewOffsetX by remember { mutableFloatStateOf(40f) }
-    var previewOffsetY by remember { mutableFloatStateOf(160f) }
-
-
 
     val context = LocalContext.current
     val view = LocalView.current
@@ -631,6 +627,38 @@ fun MirrorScreen(
                     }
 
                     if (relayState.isStreaming) {
+                        // Switch Camera (Front/Back)
+                        FilledIconButton(
+                            onClick = { viewModel.switchRelayCamera() },
+                            modifier = Modifier.size(44.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Cameraswitch,
+                                contentDescription = "Switch Camera",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // Mute/Unmute Mic
+                        FilledIconButton(
+                            onClick = { viewModel.toggleRelayMicMute() },
+                            modifier = Modifier.size(44.dp),
+                            colors = IconButtonDefaults.filledIconButtonColors(
+                                containerColor = if (relayState.isMicMuted) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainer,
+                                contentColor = if (relayState.isMicMuted) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
+                            )
+                        ) {
+                            Icon(
+                                imageVector = if (relayState.isMicMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                                contentDescription = if (relayState.isMicMuted) "Unmute Mic" else "Mute Mic",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
                         // Relay Setup & Info
                         FilledIconButton(
                             onClick = { showRelayInfoDialog = true },
@@ -698,105 +726,6 @@ fun MirrorScreen(
                 }
             }
         }
-        // Floating Draggable Camera Preview (Host Media Relay PiP)
-        if (relayState.isStreaming) {
-            Surface(
-                modifier = Modifier
-                    .offset { IntOffset(previewOffsetX.roundToInt(), previewOffsetY.roundToInt()) }
-                    .size(width = 110.dp, height = 150.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .border(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.8f), RoundedCornerShape(18.dp))
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            previewOffsetX = (previewOffsetX + dragAmount.x).coerceIn(0f, 2000f)
-                            previewOffsetY = (previewOffsetY + dragAmount.y).coerceIn(0f, 3000f)
-                        }
-                    },
-                shape = RoundedCornerShape(18.dp),
-                color = Color.Black,
-                tonalElevation = 8.dp,
-                shadowElevation = 8.dp
-            ) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    AndroidView(
-                        factory = { ctx ->
-                            TextureView(ctx).apply {
-                                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                                    override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, w: Int, h: Int) {
-                                        viewModel.setRelayPreviewSurface(android.view.Surface(surfaceTexture))
-                                    }
-                                    override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, w: Int, h: Int) {}
-                                    override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
-                                        viewModel.setRelayPreviewSurface(null)
-                                        return true
-                                    }
-                                    override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {}
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    // Top quick controls
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        // Switch front/back camera
-                        FilledIconButton(
-                            onClick = { viewModel.switchRelayCamera() },
-                            modifier = Modifier.size(30.dp),
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = Color.Black.copy(alpha = 0.6f),
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Cameraswitch,
-                                contentDescription = "Switch Camera",
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        // Mute/unmute microphone
-                        FilledIconButton(
-                            onClick = { viewModel.toggleRelayMicMute() },
-                            modifier = Modifier.size(30.dp),
-                            colors = IconButtonDefaults.filledIconButtonColors(
-                                containerColor = if (relayState.isMicMuted) MaterialTheme.colorScheme.error else Color.Black.copy(alpha = 0.6f),
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Icon(
-                                imageVector = if (relayState.isMicMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                                contentDescription = if (relayState.isMicMuted) "Unmute Mic" else "Mute Mic",
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-
-                    // Bottom info pill
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 4.dp)
-                            .clickable { showRelayInfoDialog = true },
-                        shape = CircleShape,
-                        color = Color.Black.copy(alpha = 0.65f)
-                    ) {
-                        Text(
-                            text = if (relayState.activeClients > 0) "${relayState.activeClients} connected" else "Live",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (relayState.activeClients > 0) Color.Green else Color.White,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
-        }
     }
 
     if (showDisconnectDialog) {
@@ -852,6 +781,13 @@ fun MirrorScreen(
 
     if (showRelayInfoDialog) {
         val clipboardManager = LocalClipboardManager.current
+        val targetSwapStatus by viewModel.targetSwapStatus.collectAsStateWithLifecycle()
+        var isConfiguringTarget by remember { mutableStateOf(false) }
+
+        LaunchedEffect(Unit) {
+            viewModel.checkTargetSwapStatus()
+        }
+
         AlertDialog(
             onDismissRequest = { showRelayInfoDialog = false },
             shape = RoundedCornerShape(28.dp),
@@ -874,11 +810,77 @@ fun MirrorScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "Streams this unrooted controller phone's camera & microphone to the rooted target phone for video calls (WhatsApp, Zoom, Meet, Telegram).",
+                        text = "Streams this phone's camera & microphone to the remote phone for video calls (WhatsApp, Zoom, Meet, Telegram) without blocking your view.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
+                    // 1-Tap Target Device Virtual Camera Automator
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Target Camera Swap",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (targetSwapStatus.scopedAppsCount > 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
+                                ) {
+                                    Text(
+                                        text = if (targetSwapStatus.scopedAppsCount > 0) "${targetSwapStatus.scopedAppsCount} apps scoped" else targetSwapStatus.statusMessage,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (targetSwapStatus.scopedAppsCount > 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "Enables CamSwap and automatically scopes ALL installed user apps (WhatsApp, Meet, Zoom, Telegram, Camera, etc.) by default on the target phone.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Button(
+                                onClick = {
+                                    isConfiguringTarget = true
+                                    viewModel.autoConfigureTargetCameraSwap { success, msg ->
+                                        isConfiguringTarget = false
+                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                enabled = !isConfiguringTarget,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                if (isConfiguringTarget) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Configuring Target Phone...")
+                                } else {
+                                    Icon(imageVector = Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (targetSwapStatus.scopedAppsCount > 0) "Re-Sync All Apps (Default)" else "Auto-Configure Target (All Apps)")
+                                }
+                            }
+                        }
+                    }
+
+                    // RTSP Stream URLs Card
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerLowest,
@@ -933,16 +935,6 @@ fun MirrorScreen(
                             }
                         }
                     }
-
-                    Text(
-                        text = "Instructions for Rooted Target Phone:\n" +
-                                "1. Install CamSwap (or VCAM) LSPosed module.\n" +
-                                "2. Scope CamSwap to your calling app (WhatsApp/Zoom/Meet).\n" +
-                                "3. Paste the Stream URL (${relayState.localRtspUrl}).\n" +
-                                "4. The calling app will receive your camera & microphone feed seamlessly!",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             },
             confirmButton = {
