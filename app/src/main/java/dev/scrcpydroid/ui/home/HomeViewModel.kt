@@ -270,7 +270,8 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(updateResult = UpdateCheckResult.Checking) }
             val repo = settingsRepository.getOtaRepo().first()
-            val result = otaUpdateManager.checkForUpdates(repo)
+            val includePrereleases = settingsRepository.getOtaIncludePrerelease().first()
+            val result = otaUpdateManager.checkForUpdates(repo, includePrereleases)
             _uiState.update { it.copy(updateResult = result) }
         }
     }

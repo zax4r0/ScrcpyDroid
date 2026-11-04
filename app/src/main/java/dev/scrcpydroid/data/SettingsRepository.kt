@@ -46,6 +46,7 @@ class SettingsRepository @Inject constructor(
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val DARK_THEME_MODE = stringPreferencesKey("dark_theme_mode")
         val OTA_REPO = stringPreferencesKey("ota_repo")
+        val OTA_INCLUDE_PRERELEASE = booleanPreferencesKey("ota_include_prerelease")
     }
 
     private val optionsFlow: Flow<ScrcpyOptions> = context.settingsDataStore.data
@@ -167,4 +168,10 @@ class SettingsRepository @Inject constructor(
     }
 
     suspend fun updateOtaRepo(repo: String) = updateOption(Keys.OTA_REPO, repo)
+
+    fun getOtaIncludePrerelease(): Flow<Boolean> = context.settingsDataStore.data.map { preferences ->
+        preferences[Keys.OTA_INCLUDE_PRERELEASE] ?: false
+    }
+
+    suspend fun updateOtaIncludePrerelease(include: Boolean) = updateOption(Keys.OTA_INCLUDE_PRERELEASE, include)
 }

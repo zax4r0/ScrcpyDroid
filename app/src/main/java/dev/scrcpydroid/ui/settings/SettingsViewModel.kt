@@ -33,6 +33,7 @@ data class SettingsUiState(
     val dynamicColor: Boolean = true,
     val darkThemeMode: String = "system",
     val otaRepo: String = "zax4r0/ScrcpyDroid",
+    val includePrereleases: Boolean = false,
     val appVersion: String = "1.0.0",
     val updateResult: UpdateCheckResult = UpdateCheckResult.Idle,
     val downloadProgress: DownloadProgress? = null
@@ -89,6 +90,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.getDarkThemeMode().collect { mode ->
                 _uiState.update { it.copy(darkThemeMode = mode) }
+            }
+        }
+
+        viewModelScope.launch {
+            settingsRepository.getOtaIncludePrerelease().collect { include ->
+                _uiState.update { it.copy(includePrereleases = include) }
             }
         }
     }
@@ -201,11 +208,19 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setIncludePrereleases(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateOtaIncludePrerelease(enabled)
+            checkForUpdates()
+        }
+    }
+
     fun checkForUpdates() {
         viewModelScope.launch {
             _uiState.update { it.copy(updateResult = UpdateCheckResult.Checking) }
             val repo = _uiState.value.otaRepo
-            val result = otaUpdateManager.checkForUpdates(repo)
+            val includePrereleases = _uiState.value.includePrereleases
+            val result = otaUpdateManager.checkForUpdates(repo, includePrereleases)
             _uiState.update { it.copy(updateResult = result) }
         }
     }

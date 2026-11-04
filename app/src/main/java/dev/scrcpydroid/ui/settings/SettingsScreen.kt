@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MovieFilter
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.SlowMotionVideo
 import androidx.compose.material.icons.filled.Speed
@@ -64,6 +65,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -744,12 +746,36 @@ fun SettingsContent(
                         SettingsDivider()
 
                         ListItem(
+                            headlineContent = { Text("Include Pre-releases", fontWeight = FontWeight.Medium) },
+                            supportingContent = { Text("Check and install beta / preview builds before official releases") },
+                            leadingContent = {
+                                SettingIcon(
+                                    imageVector = Icons.Default.NewReleases,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    bg = MaterialTheme.colorScheme.tertiaryContainer
+                                )
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = uiState.includePrereleases,
+                                    onCheckedChange = { viewModel.setIncludePrereleases(it) }
+                                )
+                            },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                        )
+
+                        SettingsDivider()
+
+                        ListItem(
                             headlineContent = { Text("Check for Updates", fontWeight = FontWeight.Medium) },
                             supportingContent = {
                                 when (uiState.updateResult) {
                                     is dev.scrcpydroid.core.ota.UpdateCheckResult.Checking -> Text("Checking GitHub releases...")
-                                    is dev.scrcpydroid.core.ota.UpdateCheckResult.Available -> Text("New version available!")
-                                    is dev.scrcpydroid.core.ota.UpdateCheckResult.UpToDate -> Text("App is up to date")
+                                    is dev.scrcpydroid.core.ota.UpdateCheckResult.Available -> {
+                                        val info = (uiState.updateResult as dev.scrcpydroid.core.ota.UpdateCheckResult.Available).info
+                                        if (info.isPrerelease) Text("Pre-release v${info.versionName} available!") else Text("New version v${info.versionName} available!")
+                                    }
+                                    is dev.scrcpydroid.core.ota.UpdateCheckResult.UpToDate -> Text("App is up to date (v${uiState.appVersion})")
                                     is dev.scrcpydroid.core.ota.UpdateCheckResult.Error -> Text((uiState.updateResult as dev.scrcpydroid.core.ota.UpdateCheckResult.Error).message)
                                     else -> Text("Updates sourced from github.com/${uiState.otaRepo}")
                                 }
@@ -789,9 +815,37 @@ fun SettingsContent(
                 onDismissRequest = { viewModel.clearUpdateResult() },
                 shape = RoundedCornerShape(28.dp),
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                title = { Text("Update Available: v${updateInfo.versionName}", fontWeight = FontWeight.Bold) },
+                icon = {
+                    Icon(
+                        imageVector = if (updateInfo.isPrerelease) Icons.Default.NewReleases else Icons.Default.SystemUpdate,
+                        contentDescription = null,
+                        tint = if (updateInfo.isPrerelease) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = if (updateInfo.isPrerelease) "Pre-release Available: v${updateInfo.versionName}" else "Update Available: v${updateInfo.versionName}",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (updateInfo.isPrerelease) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.tertiaryContainer
+                            ) {
+                                Text(
+                                    text = "PRE-RELEASE / BETA CHANNEL",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                         Text(updateInfo.releaseNotes)
                         if (uiState.downloadProgress is dev.scrcpydroid.core.ota.DownloadProgress.Downloading) {
                             val p = (uiState.downloadProgress as dev.scrcpydroid.core.ota.DownloadProgress.Downloading).progress
@@ -809,7 +863,7 @@ fun SettingsContent(
                         enabled = uiState.downloadProgress !is dev.scrcpydroid.core.ota.DownloadProgress.Downloading,
                         shape = RoundedCornerShape(20.dp)
                     ) {
-                        Text("Download & Install", fontWeight = FontWeight.Bold)
+                        Text(if (updateInfo.isPrerelease) "Install Pre-release" else "Download & Install", fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {

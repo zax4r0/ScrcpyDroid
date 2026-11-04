@@ -1545,12 +1545,22 @@ fun OtaUpdateBanner(
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Update Available: ${info.versionName}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                    Column {
+                        Text(
+                            text = if (info.isPrerelease) "Pre-release: ${info.versionName}" else "Update Available: ${info.versionName}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        if (info.isPrerelease) {
+                            Text(
+                                text = "Beta / Pre-release Channel",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
                 IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
                     Icon(

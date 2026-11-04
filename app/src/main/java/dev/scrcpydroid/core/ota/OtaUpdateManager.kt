@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -29,7 +30,8 @@ data class AppReleaseInfo(
     val versionName: String,
     val releaseNotes: String,
     val downloadUrl: String,
-    val isNewer: Boolean
+    val isNewer: Boolean,
+    val isPrerelease: Boolean = false
 )
 
 sealed interface UpdateCheckResult {
@@ -70,12 +72,18 @@ class OtaUpdateManager @Inject constructor(
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun checkForUpdates(repoOrUrl: String? = null): UpdateCheckResult = withContext(Dispatchers.IO) {
+    suspend fun checkForUpdates(repoOrUrl: String? = null, includePrereleases: Boolean = false): UpdateCheckResult = withContext(Dispatchers.IO) {
         try {
             val endpoint = when {
-                repoOrUrl.isNullOrBlank() -> "https://api.github.com/repos/$DEFAULT_REPO/releases/latest"
-                repoOrUrl.startsWith("http://") || repoOrUrl.startsWith("https://") -> repoOrUrl
-                else -> "https://api.github.com/repos/$repoOrUrl/releases/latest"
+                !repoOrUrl.isNullOrBlank() && (repoOrUrl.startsWith("http://") || repoOrUrl.startsWith("https://")) -> repoOrUrl
+                includePrereleases -> {
+                    val repo = if (repoOrUrl.isNullOrBlank()) DEFAULT_REPO else repoOrUrl
+                    "https://api.github.com/repos/$repo/releases"
+                }
+                else -> {
+                    val repo = if (repoOrUrl.isNullOrBlank()) DEFAULT_REPO else repoOrUrl
+                    "https://api.github.com/repos/$repo/releases/latest"
+                }
             }
             val url = URL(endpoint)
             val connection = (url.openConnection() as HttpURLConnection).apply {
@@ -91,14 +99,26 @@ class OtaUpdateManager @Inject constructor(
             }
 
             val body = connection.inputStream.bufferedReader().use { it.readText() }
-            val root = json.parseToJsonElement(body).jsonObject
+            val parsedJson = json.parseToJsonElement(body)
 
-            val tagName = root["tag_name"]?.jsonPrimitive?.content ?: "1.0.0"
+            val targetRelease = if (parsedJson is kotlinx.serialization.json.JsonArray) {
+                parsedJson.mapNotNull { it.jsonObject }.firstOrNull { releaseObj ->
+                    val hasApk = releaseObj["assets"]?.jsonArray?.any {
+                        it.jsonObject["name"]?.jsonPrimitive?.content?.endsWith(".apk", ignoreCase = true) == true
+                    } ?: false
+                    hasApk
+                } ?: return@withContext UpdateCheckResult.UpToDate(currentVersion)
+            } else {
+                parsedJson.jsonObject
+            }
+
+            val tagName = targetRelease["tag_name"]?.jsonPrimitive?.content ?: "1.0.0"
             val cleanVersion = tagName.trimStart('v', 'V')
-            val bodyNotes = root["body"]?.jsonPrimitive?.content ?: "Bug fixes and improvements"
+            val bodyNotes = targetRelease["body"]?.jsonPrimitive?.content ?: "Bug fixes and improvements"
+            val isPrerelease = targetRelease["prerelease"]?.jsonPrimitive?.booleanOrNull ?: false
 
             var apkUrl: String? = null
-            root["assets"]?.jsonArray?.forEach { assetElement ->
+            targetRelease["assets"]?.jsonArray?.forEach { assetElement ->
                 val assetObj = assetElement.jsonObject
                 val name = assetObj["name"]?.jsonPrimitive?.content ?: ""
                 val browserUrl = assetObj["browser_download_url"]?.jsonPrimitive?.content
@@ -114,10 +134,11 @@ class OtaUpdateManager @Inject constructor(
                 versionName = cleanVersion,
                 releaseNotes = bodyNotes,
                 downloadUrl = finalUrl,
-                isNewer = isNewer
+                isNewer = isNewer,
+                isPrerelease = isPrerelease
             )
 
-            if (isNewer && finalUrl.isNotBlank()) {
+            if ((isNewer || (includePrereleases && cleanVersion != currentVersion)) && finalUrl.isNotBlank()) {
                 UpdateCheckResult.Available(info)
             } else {
                 UpdateCheckResult.UpToDate(currentVersion)
